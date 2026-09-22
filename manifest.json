@@ -1,7 +1,7 @@
 {
   "name": "Meus Gastos — Controle Financeiro",
   "short_name": "Meus Gastos",
-  "description": "Controle de gastos pessoais com registro por voz, funciona offline.",
+  "description": "Controle de gastos e receitas pessoais com registro por voz, orçamento mensal e funcionamento offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

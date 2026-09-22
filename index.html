@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Meus Gastos — Controle Financeiro</title>
-<meta name="description" content="Controle de gastos pessoais com registro por voz, funciona offline." />
+<meta name="description" content="Controle de gastos e receitas pessoais com registro por voz, orçamento mensal e funcionamento offline." />
 
 <!-- ============================================================
      CONFIGURAÇÃO PWA
@@ -21,14 +21,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Meus Gastos" />
 
-<!-- Tailwind via CDN, conforme solicitado -->
+<!-- Tailwind via CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 
 <script>
-  // Extende a paleta padrão do Tailwind com as cores da identidade do app.
   tailwind.config = {
     theme: {
       extend: {
@@ -52,28 +51,42 @@
   html, body { background: #FAF8F5; }
   body { -webkit-tap-highlight-color: transparent; }
 
-  /* Respeita a área segura em celulares com notch/barra de gestos */
   :root {
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  /* Animação sutil do botão de voz enquanto está ouvindo */
   @keyframes pulse-ring {
     0%   { box-shadow: 0 0 0 0 rgba(196, 87, 61, 0.45); }
     100% { box-shadow: 0 0 0 22px rgba(196, 87, 61, 0); }
   }
   .listening { animation: pulse-ring 1.4s ease-out infinite; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .listening { animation: none; }
+  /* Onda sonora animada mostrada enquanto o app está ouvindo o microfone */
+  @keyframes onda {
+    0%, 100% { height: 8px; }
+    50% { height: 26px; }
+  }
+  .onda-barra {
+    width: 4px;
+    min-height: 8px;
+    background: currentColor;
+    border-radius: 999px;
+    animation: onda 0.9s ease-in-out infinite;
   }
 
-  /* Barra de rolagem discreta para a lista de gastos */
-  .thin-scroll::-webkit-scrollbar { width: 6px; }
+  @media (prefers-reduced-motion: reduce) {
+    .listening, .onda-barra { animation: none; }
+  }
+
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
   .thin-scroll::-webkit-scrollbar-thumb { background: #d8d2c7; border-radius: 999px; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
   .tab-active { background: #1F2A24; color: #FAF8F5; }
+  .tipo-active-despesa { background: #C4573D; color: #FAF8F5; border-color: transparent; }
+  .tipo-active-receita { background: #2F6F5E; color: #FAF8F5; border-color: transparent; }
 </style>
 </head>
 
@@ -81,7 +94,8 @@
 
   <!-- ============================================================
        CABEÇALHO
-       Mostra o nome do app e o total gasto no período selecionado.
+       Saldo do período, receitas x despesas, orçamento mensal e
+       seletor de período (incluindo intervalo personalizado).
        ============================================================ -->
   <header class="sticky top-0 z-20 bg-paper/90 backdrop-blur border-b border-black/5">
     <div class="max-w-md mx-auto px-5 pt-5 pb-4">
@@ -89,13 +103,50 @@
         <h1 class="font-display text-2xl font-semibold tracking-tight">Meus Gastos</h1>
         <span id="periodo-label" class="text-xs text-ink/50">este mês</span>
       </div>
-      <p class="font-display text-4xl font-semibold mt-1" id="total-periodo">R$ 0,00</p>
+
+      <p id="total-periodo" class="font-display text-4xl font-semibold mt-1">R$ 0,00</p>
+
+      <div class="flex gap-4 mt-1 text-xs font-medium">
+        <span class="text-forest">↑ <span id="total-receitas">R$ 0,00</span></span>
+        <span class="text-coral">↓ <span id="total-despesas">R$ 0,00</span></span>
+      </div>
+
+      <!-- Orçamento mensal: barra de progresso + link para definir/editar -->
+      <div id="orcamento-bloco" class="hidden mt-3">
+        <div class="flex justify-between text-[11px] text-ink/50 mb-1">
+          <span>Orçamento do mês</span>
+          <span id="orcamento-texto"></span>
+        </div>
+        <div class="h-1.5 bg-black/5 rounded-full overflow-hidden">
+          <div id="orcamento-barra" class="h-full rounded-full transition-all duration-500"></div>
+        </div>
+      </div>
+      <button id="btn-orcamento" type="button" class="text-[11px] text-ink/40 underline mt-2">
+        Definir orçamento mensal
+      </button>
+      <div id="orcamento-form" class="hidden gap-2 mt-2">
+        <input id="input-orcamento" type="number" step="0.01" min="0" placeholder="0,00"
+               class="flex-1 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-forest/40" />
+        <button id="btn-salvar-orcamento" type="button"
+                class="bg-forest text-paper text-xs font-medium px-3 rounded-lg active:opacity-80 transition-opacity">Salvar</button>
+      </div>
 
       <!-- Abas de período -->
-      <div class="flex gap-1.5 mt-4 bg-black/5 p-1 rounded-full text-sm">
-        <button data-periodo="hoje" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors">Hoje</button>
-        <button data-periodo="mes" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors tab-active">Mês</button>
-        <button data-periodo="todos" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors">Todos</button>
+      <div class="flex gap-1.5 mt-4 bg-black/5 p-1 rounded-full text-sm overflow-x-auto no-scrollbar">
+        <button data-periodo="hoje" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Hoje</button>
+        <button data-periodo="semana" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Semana</button>
+        <button data-periodo="mes" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap tab-active">Mês</button>
+        <button data-periodo="todos" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Tudo</button>
+        <button data-periodo="personalizado" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Personalizado</button>
+      </div>
+
+      <!-- Intervalo de datas, visível apenas quando "Personalizado" está ativo -->
+      <div id="periodo-custom" class="hidden grid grid-cols-2 gap-2 mt-2">
+        <input type="date" id="custom-de" aria-label="De"
+               class="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-forest/40" />
+        <input type="date" id="custom-ate" aria-label="Até"
+               class="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-forest/40" />
       </div>
     </div>
   </header>
@@ -108,15 +159,25 @@
     <section class="flex flex-col items-center text-center gap-3">
       <button id="btn-voz"
         class="relative w-28 h-28 rounded-full bg-coral text-paper flex items-center justify-center
-               shadow-lg shadow-coral/30 active:scale-95 transition-transform">
+               shadow-lg shadow-coral/30 hover:shadow-xl hover:shadow-coral/40 active:scale-95
+               transition-[transform,box-shadow] overflow-hidden">
         <svg id="icone-mic" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="1.8" class="w-10 h-10">
           <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/>
           <path d="M19 11a7 7 0 0 1-14 0M12 18v3"/>
         </svg>
+        <!-- Onda sonora, exibida no lugar do ícone enquanto o app ouve -->
+        <div id="onda-voz" class="hidden absolute inset-0 flex items-center justify-center gap-1.5">
+          <span class="onda-barra" style="animation-delay:0ms"></span>
+          <span class="onda-barra" style="animation-delay:150ms"></span>
+          <span class="onda-barra" style="animation-delay:300ms"></span>
+          <span class="onda-barra" style="animation-delay:150ms"></span>
+          <span class="onda-barra" style="animation-delay:0ms"></span>
+        </div>
       </button>
-      <p id="status-voz" class="text-sm text-ink/60 max-w-[15rem]">
-        Toque e diga, por exemplo: <span class="italic">"Almoço 25 reais alimentação"</span>
+      <p id="status-voz" class="text-sm text-ink/60 max-w-[16rem]">
+        Toque e diga, por exemplo: <span class="italic">"Almoço 25 reais alimentação"</span> ou
+        <span class="italic">"Recebi 3000 de salário"</span>
       </p>
     </section>
 
@@ -134,6 +195,19 @@
         </summary>
 
         <form id="form-gasto" class="mt-4 space-y-3">
+          <!-- Alterna entre Despesa e Receita; troca as categorias disponíveis -->
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" data-tipo="despesa"
+                    class="tipo-btn border border-black/10 rounded-xl py-2 text-sm font-medium transition-colors">
+              Despesa
+            </button>
+            <button type="button" data-tipo="receita"
+                    class="tipo-btn border border-black/10 rounded-xl py-2 text-sm font-medium transition-colors">
+              Receita
+            </button>
+          </div>
+          <input type="hidden" id="campo-tipo" name="tipo" value="despesa" />
+
           <div>
             <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-descricao">Descrição</label>
             <input id="campo-descricao" name="descricao" type="text" required placeholder="Ex.: Almoço"
@@ -146,7 +220,7 @@
               <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-valor">Valor (R$)</label>
               <input id="campo-valor" name="valor" type="number" step="0.01" min="0" required placeholder="0,00"
                      class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
-                            focus:outline-none focus:ring-2 focus:ring-forest/40" />
+                            focus:outline-none focus:ring-2 focus:ring-forest/40 transition-shadow" />
             </div>
             <div>
               <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-data">Data</label>
@@ -157,24 +231,57 @@
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-categoria">Categoria</label>
-            <select id="campo-categoria" name="categoria"
-                    class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
-                           focus:outline-none focus:ring-2 focus:ring-forest/40">
-              <option>Alimentação</option>
-              <option>Transporte</option>
-              <option>Moradia</option>
-              <option>Saúde</option>
-              <option>Lazer</option>
-              <option>Compras</option>
-              <option>Educação</option>
-              <option>Outros</option>
-            </select>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-medium text-ink/60" for="campo-categoria">Categoria</label>
+              <button type="button" id="btn-nova-categoria"
+                      class="flex items-center gap-1 text-[11px] font-medium text-forest active:opacity-60 transition-opacity">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" class="w-3 h-3"><path d="M12 5v14M5 12h14"/></svg>
+                Nova categoria
+              </button>
+            </div>
+
+            <div class="relative">
+              <select id="campo-categoria" name="categoria"
+                      class="w-full appearance-none rounded-xl border border-black/10 bg-white pl-4 pr-9 py-2.5 text-sm
+                             focus:outline-none focus:ring-2 focus:ring-forest/40 transition-shadow">
+                <!-- Preenchido via JavaScript conforme o tipo (Despesa/Receita) -->
+              </select>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </div>
+
+            <!-- Mini-formulário para criar uma categoria nova, dentro do tipo atual (Despesa/Receita) -->
+            <div id="nova-categoria-form" class="hidden mt-2 p-3 rounded-xl border border-black/10 bg-black/[0.02] space-y-2.5">
+              <div class="flex gap-2">
+                <input id="input-categoria-emoji" type="text" maxlength="4" placeholder="🏷️"
+                       class="w-12 text-center rounded-lg border border-black/10 bg-white px-2 py-2 text-base
+                              focus:outline-none focus:ring-2 focus:ring-forest/40" />
+                <input id="input-categoria-nome" type="text" placeholder="Nome da categoria"
+                       class="flex-1 min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm
+                              focus:outline-none focus:ring-2 focus:ring-forest/40" />
+                <input id="input-categoria-cor" type="color" value="#8B5CF6" aria-label="Cor no gráfico"
+                       class="w-10 h-[38px] rounded-lg border border-black/10 bg-white p-1 shrink-0" />
+              </div>
+              <div class="flex gap-2">
+                <button type="button" id="btn-salvar-categoria"
+                        class="flex-1 bg-forest text-paper text-xs font-medium py-2 rounded-lg active:opacity-80 transition-opacity">
+                  Adicionar categoria
+                </button>
+                <button type="button" id="btn-cancelar-categoria"
+                        class="text-xs text-ink/50 px-3 active:opacity-60 transition-opacity">
+                  Cancelar
+                </button>
+              </div>
+              <div id="lista-categorias-custom" class="pt-0.5 space-y-1.5"></div>
+            </div>
           </div>
 
-          <button type="submit"
+          <button type="submit" id="btn-salvar-gasto"
                   class="w-full bg-forest hover:bg-forest-dark text-paper font-medium py-3 rounded-xl
-                         transition-colors">
+                         active:scale-[0.98] transition-[background-color,transform] shadow-sm shadow-forest/20">
             Salvar gasto
           </button>
         </form>
@@ -182,14 +289,14 @@
     </section>
 
     <!-- ============================================================
-         LISTA DE GASTOS
+         REGISTROS: lista ou gráfico por categoria
          ============================================================ -->
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-display text-lg font-medium">Registros</h2>
         <div class="flex gap-1 bg-black/5 p-1 rounded-full text-xs">
           <button data-visao="lista" class="visao-btn px-3 py-1 rounded-full transition-colors tab-active">Lista</button>
-          <button data-visao="grafico" class="visao-btn px-3 py-1 rounded-full transition-colors">Por categoria</button>
+          <button data-visao="grafico" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Por categoria</button>
         </div>
       </div>
 
@@ -203,13 +310,15 @@
           <!-- Itens inseridos via JavaScript -->
         </ul>
 
-        <p id="estado-vazio" class="text-sm text-ink/40 text-center py-10 hidden">
-          Nenhum gasto registrado neste período ainda.
-        </p>
+        <div id="estado-vazio" class="text-center py-12 hidden">
+          <p class="text-3xl mb-2">🗒️</p>
+          <p class="text-sm text-ink/40">Nenhum registro neste período ainda.</p>
+        </div>
       </div>
 
-      <!-- Visão: gráfico de gastos por categoria (donut + legenda) -->
+      <!-- Visão: gráfico de despesas por categoria (donut + legenda) -->
       <div id="visao-grafico" class="hidden flex flex-col items-center py-2">
+        <p class="text-[11px] text-ink/40 mb-4">Considera apenas despesas do período selecionado</p>
         <div class="relative w-40 h-40 mb-6">
           <div id="donut-categorias" class="w-40 h-40 rounded-full"></div>
           <div class="absolute inset-0 m-auto w-24 h-24 bg-paper rounded-full flex flex-col items-center justify-center">
@@ -222,9 +331,10 @@
           <!-- Itens inseridos via JavaScript -->
         </div>
 
-        <p id="estado-vazio-grafico" class="text-sm text-ink/40 text-center py-10 hidden">
-          Nenhum gasto registrado neste período ainda.
-        </p>
+        <div id="estado-vazio-grafico" class="text-center py-10 hidden">
+          <p class="text-3xl mb-2">📊</p>
+          <p class="text-sm text-ink/40">Nenhuma despesa registrada neste período ainda.</p>
+        </div>
       </div>
     </section>
 
@@ -233,37 +343,103 @@
          ============================================================ -->
     <section class="flex gap-3 pt-2">
       <button id="btn-exportar"
-        class="flex-1 flex items-center justify-center gap-2 border border-ink/15 text-ink
-               font-medium py-3 rounded-xl active:bg-black/5 transition-colors">
+        class="flex-1 flex items-center justify-center gap-2 border border-ink/15 text-ink bg-white/60
+               font-medium py-3 rounded-xl active:bg-black/5 active:scale-[0.98] transition-all">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" class="w-4 h-4"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>
         Exportar CSV
       </button>
       <button id="btn-limpar"
-        class="flex items-center justify-center gap-2 border border-coral/30 text-coral
-               font-medium py-3 px-4 rounded-xl active:bg-coral/5 transition-colors">
+        class="flex items-center justify-center gap-2 border border-coral/30 text-coral bg-white/60
+               font-medium py-3 px-4 rounded-xl active:bg-coral/5 active:scale-[0.98] transition-all">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" class="w-4 h-4"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0 1 12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-12"/></svg>
       </button>
     </section>
   </main>
 
-  <!-- Aviso de instalação (some sozinho após alguns segundos) -->
+  <!-- Aviso curto (some sozinho após alguns segundos) -->
   <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-ink text-paper text-sm
                           px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none
-                          transition-opacity duration-300 z-30"></div>
+                          transition-opacity duration-300 z-30 max-w-[90vw] text-center"></div>
 
 <script>
 /* ==================================================================
+   CATEGORIAS
+   Duas listas separadas (despesa/receita), com ícone e cor por
+   categoria. "Outros" existe nas duas, mas com o mesmo emoji.
+   ================================================================== */
+const CATEGORIAS_DESPESA = ["Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Compras", "Educação", "Outros"];
+const CATEGORIAS_RECEITA = ["Salário", "Freelance", "Investimentos", "Presente", "Outros"];
+
+const ICONES_CATEGORIA = {
+  "Alimentação": "🍽️", "Transporte": "🚗", "Moradia": "🏠", "Saúde": "💊",
+  "Lazer": "🎬", "Compras": "🛍️", "Educação": "📚",
+  "Salário": "💰", "Freelance": "💻", "Investimentos": "📈", "Presente": "🎁",
+  "Outros": "📎",
+};
+
+// Cores usadas no gráfico donut (apenas categorias de despesa) e na legenda.
+const CORES_CATEGORIA = {
+  "Alimentação": "#C4573D", "Transporte": "#2F6F5E", "Moradia": "#E8A33D",
+  "Saúde": "#3E8B76", "Lazer": "#8B5CF6", "Compras": "#D97706",
+  "Educação": "#0EA5E9", "Outros": "#94A3B8",
+};
+
+/* ==================================================================
+   CATEGORIAS PERSONALIZADAS (criadas pelo usuário)
+   Guardadas separadamente das listas padrão, uma lista por tipo
+   (despesa/receita). Cada item: { nome, icone, cor? } — "cor" só se
+   aplica a despesas, já que só elas aparecem no gráfico.
+   ================================================================== */
+const CHAVE_CATEGORIAS_CUSTOM = "meus-gastos:categorias-custom";
+
+function carregarCategoriasCustom() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_CATEGORIAS_CUSTOM);
+    const obj = bruto ? JSON.parse(bruto) : {};
+    return { despesa: obj.despesa || [], receita: obj.receita || [] };
+  } catch (e) {
+    console.error("Erro ao ler categorias personalizadas:", e);
+    return { despesa: [], receita: [] };
+  }
+}
+
+function salvarCategoriasCustomStorage() {
+  localStorage.setItem(CHAVE_CATEGORIAS_CUSTOM, JSON.stringify(categoriasCustom));
+}
+
+let categoriasCustom = carregarCategoriasCustom();
+
+// Lista completa (padrão + personalizadas) de um tipo, com "Outros" sempre por último.
+function categoriasDoTipo(tipo) {
+  const base = (tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA).filter((c) => c !== "Outros");
+  const custom = categoriasCustom[tipo].map((c) => c.nome);
+  return [...base, ...custom, "Outros"];
+}
+
+// Registra ícone (e cor, se for despesa) de uma categoria personalizada nos mapas globais.
+function registrarCategoriaNosMapas(tipo, cat) {
+  ICONES_CATEGORIA[cat.nome] = cat.icone || "🏷️";
+  if (tipo === "despesa") CORES_CATEGORIA[cat.nome] = cat.cor || "#8B5CF6";
+}
+categoriasCustom.despesa.forEach((c) => registrarCategoriaNosMapas("despesa", c));
+categoriasCustom.receita.forEach((c) => registrarCategoriaNosMapas("receita", c));
+
+/* ==================================================================
    ESTADO E ARMAZENAMENTO (localStorage)
-   Cada gasto: { id, descricao, valor, categoria, data (YYYY-MM-DD) }
+   Cada gasto: { id, tipo: 'despesa'|'receita', descricao, valor, categoria, data }
+   Registros salvos antes desta versão não tinham "tipo" — a migração
+   abaixo assume "despesa" para eles, preservando todo o histórico.
    ================================================================== */
 const CHAVE_STORAGE = "meus-gastos:registros";
+const CHAVE_ORCAMENTO = "meus-gastos:orcamento";
 
 function carregarGastos() {
   try {
     const bruto = localStorage.getItem(CHAVE_STORAGE);
-    return bruto ? JSON.parse(bruto) : [];
+    const lista = bruto ? JSON.parse(bruto) : [];
+    return lista.map((g) => ({ tipo: "despesa", ...g }));
   } catch (e) {
     console.error("Erro ao ler localStorage:", e);
     return [];
@@ -274,11 +450,21 @@ function salvarGastos(lista) {
   localStorage.setItem(CHAVE_STORAGE, JSON.stringify(lista));
 }
 
+function obterOrcamento() {
+  const v = localStorage.getItem(CHAVE_ORCAMENTO);
+  return v ? parseFloat(v) : 0;
+}
+
+function salvarOrcamento(valor) {
+  if (valor > 0) localStorage.setItem(CHAVE_ORCAMENTO, String(valor));
+  else localStorage.removeItem(CHAVE_ORCAMENTO);
+}
+
 let gastos = carregarGastos();
-let periodoAtual = "mes"; // 'hoje' | 'mes' | 'todos'
+let periodoAtual = "mes"; // 'hoje' | 'semana' | 'mes' | 'todos' | 'personalizado'
 
 /* ==================================================================
-   UTILITÁRIOS
+   UTILITÁRIOS DE DATA E FORMATAÇÃO
    ================================================================== */
 function formatarMoeda(valor) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -296,6 +482,17 @@ function hojeISO() {
   return local.toISOString().slice(0, 10);
 }
 
+// Segunda-feira da semana corrente, em formato ISO (YYYY-MM-DD).
+function inicioDaSemanaISO() {
+  const d = new Date();
+  const diaSemana = d.getDay(); // 0 = domingo
+  const diffParaSegunda = diaSemana === 0 ? -6 : 1 - diaSemana;
+  d.setDate(d.getDate() + diffParaSegunda);
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
 function mostrarToast(mensagem) {
   const toast = document.getElementById("toast");
   toast.textContent = mensagem;
@@ -305,65 +502,149 @@ function mostrarToast(mensagem) {
   mostrarToast._t = setTimeout(() => {
     toast.classList.remove("opacity-100");
     toast.classList.add("opacity-0");
-  }, 2400);
+  }, 2800);
+}
+
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function capitalizar(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /* ==================================================================
    FILTRO POR PERÍODO
    ================================================================== */
 function filtrarPorPeriodo(lista) {
-  if (periodoAtual === "todos") return lista;
-
-  const agora = new Date();
-  const anoAtual = agora.getFullYear();
-  const mesAtual = agora.getMonth();
   const hojeStr = hojeISO();
 
-  return lista.filter((g) => {
-    if (periodoAtual === "hoje") return g.data === hojeStr;
-    if (periodoAtual === "mes") {
-      const [ano, mes] = g.data.split("-").map(Number);
-      return ano === anoAtual && mes === mesAtual + 1;
-    }
-    return true;
-  });
+  if (periodoAtual === "hoje") {
+    return lista.filter((g) => g.data === hojeStr);
+  }
+  if (periodoAtual === "semana") {
+    const inicio = inicioDaSemanaISO();
+    return lista.filter((g) => g.data >= inicio && g.data <= hojeStr);
+  }
+  if (periodoAtual === "mes") {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = agora.getMonth() + 1;
+    return lista.filter((g) => {
+      const [a, m] = g.data.split("-").map(Number);
+      return a === ano && m === mes;
+    });
+  }
+  if (periodoAtual === "personalizado") {
+    const de = document.getElementById("custom-de").value;
+    const ate = document.getElementById("custom-ate").value;
+    if (!de || !ate) return [];
+    return lista.filter((g) => g.data >= de && g.data <= ate);
+  }
+  return lista; // 'todos'
 }
 
 /* ==================================================================
-   RENDERIZAÇÃO
+   ORÇAMENTO MENSAL
+   Sempre calculado sobre o mês corrente (independente da aba de
+   período selecionada, já que orçamento é um conceito mensal).
+   ================================================================== */
+function calcularDespesasMesAtual() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = agora.getMonth() + 1;
+  return gastos
+    .filter((g) => g.tipo === "despesa")
+    .filter((g) => {
+      const [a, m] = g.data.split("-").map(Number);
+      return a === ano && m === mes;
+    })
+    .reduce((soma, g) => soma + g.valor, 0);
+}
+
+function atualizarOrcamentoUI() {
+  const bloco = document.getElementById("orcamento-bloco");
+  const btnDefinir = document.getElementById("btn-orcamento");
+  const orcamento = obterOrcamento();
+
+  btnDefinir.textContent = orcamento > 0 ? "Editar orçamento mensal" : "Definir orçamento mensal";
+
+  if (orcamento <= 0) {
+    bloco.classList.add("hidden");
+    return;
+  }
+
+  const gastoMes = calcularDespesasMesAtual();
+  const percentual = Math.min(100, (gastoMes / orcamento) * 100);
+
+  bloco.classList.remove("hidden");
+  document.getElementById("orcamento-texto").textContent =
+    `${formatarMoeda(gastoMes)} de ${formatarMoeda(orcamento)}`;
+
+  const barra = document.getElementById("orcamento-barra");
+  barra.style.width = percentual + "%";
+  const cor = gastoMes > orcamento ? "bg-coral" : percentual > 80 ? "bg-gold" : "bg-forest";
+  barra.className = "h-full rounded-full transition-all duration-500 " + cor;
+}
+
+const btnOrcamento = document.getElementById("btn-orcamento");
+const orcamentoForm = document.getElementById("orcamento-form");
+const inputOrcamento = document.getElementById("input-orcamento");
+
+btnOrcamento.addEventListener("click", () => {
+  const abrindo = orcamentoForm.classList.contains("hidden");
+  orcamentoForm.classList.toggle("hidden");
+  orcamentoForm.classList.toggle("flex", abrindo);
+  if (abrindo) {
+    const atual = obterOrcamento();
+    inputOrcamento.value = atual > 0 ? atual.toFixed(2) : "";
+    inputOrcamento.focus();
+  }
+});
+
+document.getElementById("btn-salvar-orcamento").addEventListener("click", () => {
+  const valor = parseFloat(String(inputOrcamento.value).replace(",", ".")) || 0;
+  salvarOrcamento(valor);
+  orcamentoForm.classList.add("hidden");
+  orcamentoForm.classList.remove("flex");
+  atualizarOrcamentoUI();
+  mostrarToast(valor > 0 ? "Orçamento mensal salvo ✓" : "Orçamento removido.");
+});
+
+/* ==================================================================
+   RENDERIZAÇÃO DA LISTA E DOS TOTAIS
    ================================================================== */
 const listaEl = document.getElementById("lista-gastos");
 const estadoVazioEl = document.getElementById("estado-vazio");
 const totalPeriodoEl = document.getElementById("total-periodo");
+const totalReceitasEl = document.getElementById("total-receitas");
+const totalDespesasEl = document.getElementById("total-despesas");
 const contagemEl = document.getElementById("contagem-registros");
 const periodoLabelEl = document.getElementById("periodo-label");
 
-const ICONES_CATEGORIA = {
-  "Alimentação": "🍽️", "Transporte": "🚗", "Moradia": "🏠", "Saúde": "💊",
-  "Lazer": "🎬", "Compras": "🛍️", "Educação": "📚", "Outros": "📎",
-};
-
-// Uma cor fixa por categoria, usada no gráfico (donut) e na legenda.
-const CORES_CATEGORIA = {
-  "Alimentação": "#C4573D", "Transporte": "#2F6F5E", "Moradia": "#E8A33D",
-  "Saúde": "#3E8B76", "Lazer": "#8B5CF6", "Compras": "#D97706",
-  "Educação": "#0EA5E9", "Outros": "#94A3B8",
+const LABELS_PERIODO = {
+  hoje: "hoje", semana: "esta semana", mes: "este mês",
+  todos: "todo o período", personalizado: "período selecionado",
 };
 
 function renderizar() {
-  const filtrados = filtrarPorPeriodo(gastos)
-    .slice()
-    .sort((a, b) => (a.data < b.data ? 1 : -1));
+  const filtrados = filtrarPorPeriodo(gastos).slice().sort((a, b) => (a.data < b.data ? 1 : -1));
 
   listaEl.innerHTML = "";
   estadoVazioEl.classList.toggle("hidden", filtrados.length > 0);
 
-  let total = 0;
-  for (const g of filtrados) {
-    total += g.valor;
+  let totalReceitas = 0;
+  let totalDespesas = 0;
 
+  for (const g of filtrados) {
+    if (g.tipo === "receita") totalReceitas += g.valor;
+    else totalDespesas += g.valor;
+
+    const positivo = g.tipo === "receita";
     const li = document.createElement("li");
-    li.className = "flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-black/5";
+    li.className = "flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-black/5 shadow-sm shadow-black/[0.02] transition-shadow hover:shadow-md hover:shadow-black/[0.04]";
     li.innerHTML = `
       <div class="flex items-center gap-3 min-w-0">
         <span class="text-xl leading-none">${ICONES_CATEGORIA[g.categoria] ?? "📎"}</span>
@@ -373,7 +654,9 @@ function renderizar() {
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <span class="font-display font-semibold text-sm">${formatarMoeda(g.valor)}</span>
+        <span class="font-display font-semibold text-sm ${positivo ? "text-forest" : "text-ink"}">
+          ${positivo ? "+" : "−"} ${formatarMoeda(g.valor)}
+        </span>
         <button data-remover="${g.id}" aria-label="Remover"
           class="text-ink/30 hover:text-coral transition-colors p-1">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -383,29 +666,44 @@ function renderizar() {
     listaEl.appendChild(li);
   }
 
-  totalPeriodoEl.textContent = formatarMoeda(total);
-  contagemEl.textContent = `${filtrados.length} ${filtrados.length === 1 ? "item" : "itens"}`;
-  periodoLabelEl.textContent =
-    periodoAtual === "hoje" ? "hoje" : periodoAtual === "mes" ? "este mês" : "todo o período";
+  const saldo = totalReceitas - totalDespesas;
+  totalPeriodoEl.textContent = formatarMoeda(saldo);
+  totalPeriodoEl.classList.toggle("text-coral", saldo < 0);
+  totalPeriodoEl.classList.toggle("text-ink", saldo >= 0);
+  totalReceitasEl.textContent = formatarMoeda(totalReceitas);
+  totalDespesasEl.textContent = formatarMoeda(totalDespesas);
 
-  renderizarGrafico(filtrados);
+  contagemEl.textContent = `${filtrados.length} ${filtrados.length === 1 ? "item" : "itens"}`;
+  periodoLabelEl.textContent = LABELS_PERIODO[periodoAtual] ?? "";
+
+  renderizarGrafico(filtrados.filter((g) => g.tipo === "despesa"));
+  atualizarOrcamentoUI();
 }
 
+// Remoção de um item (delegação de evento)
+listaEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remover]");
+  if (!btn) return;
+  const id = btn.getAttribute("data-remover");
+  gastos = gastos.filter((g) => g.id !== id);
+  salvarGastos(gastos);
+  renderizar();
+});
+
 /* ==================================================================
-   GRÁFICO POR CATEGORIA (donut + legenda)
-   Agrupa os gastos do período atualmente filtrado por categoria e
-   desenha um donut com conic-gradient (CSS puro, sem bibliotecas)
-   mais uma legenda com barras proporcionais.
+   GRÁFICO POR CATEGORIA (donut + legenda) — apenas despesas
+   Desenhado com CSS puro (conic-gradient), sem bibliotecas externas,
+   para continuar funcionando 100% offline.
    ================================================================== */
 const donutEl = document.getElementById("donut-categorias");
 const donutTotalEl = document.getElementById("donut-total");
 const legendaEl = document.getElementById("legenda-categorias");
 const estadoVazioGraficoEl = document.getElementById("estado-vazio-grafico");
 
-function renderizarGrafico(filtrados) {
+function renderizarGrafico(despesasFiltradas) {
   const porCategoria = {};
   let total = 0;
-  for (const g of filtrados) {
+  for (const g of despesasFiltradas) {
     porCategoria[g.categoria] = (porCategoria[g.categoria] || 0) + g.valor;
     total += g.valor;
   }
@@ -419,8 +717,6 @@ function renderizarGrafico(filtrados) {
 
   if (categoriasOrdenadas.length === 0) return;
 
-  // Monta o gradiente cônico do donut: cada categoria ocupa uma fatia
-  // proporcional ao seu valor, em graus (0 a 360).
   let acumulado = 0;
   const partesGradiente = categoriasOrdenadas.map(([categoria, valor]) => {
     const cor = CORES_CATEGORIA[categoria] || "#94A3B8";
@@ -431,8 +727,6 @@ function renderizarGrafico(filtrados) {
   });
   donutEl.style.background = `conic-gradient(${partesGradiente.join(", ")})`;
 
-  // Legenda: uma linha por categoria, com pontinho colorido, valor,
-  // percentual e uma barrinha proporcional.
   for (const [categoria, valor] of categoriasOrdenadas) {
     const cor = CORES_CATEGORIA[categoria] || "#94A3B8";
     const percentual = total > 0 ? (valor / total) * 100 : 0;
@@ -463,47 +757,202 @@ document.querySelectorAll(".visao-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".visao-btn").forEach((b) => b.classList.remove("tab-active"));
     btn.classList.add("tab-active");
-
     const visao = btn.dataset.visao;
     visaoListaEl.classList.toggle("hidden", visao !== "lista");
     visaoGraficoEl.classList.toggle("hidden", visao !== "grafico");
   });
 });
 
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// Remoção de um item (delegação de evento)
-listaEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-remover]");
-  if (!btn) return;
-  const id = btn.getAttribute("data-remover");
-  gastos = gastos.filter((g) => g.id !== id);
-  salvarGastos(gastos);
-  renderizar();
-});
-
 /* ==================================================================
-   ABAS DE PERÍODO
+   ABAS DE PERÍODO (inclui intervalo personalizado)
    ================================================================== */
+const periodoCustomEl = document.getElementById("periodo-custom");
+const inputCustomDe = document.getElementById("custom-de");
+const inputCustomAte = document.getElementById("custom-ate");
+
 document.querySelectorAll(".periodo-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     periodoAtual = btn.dataset.periodo;
     document.querySelectorAll(".periodo-btn").forEach((b) => b.classList.remove("tab-active"));
     btn.classList.add("tab-active");
+
+    const personalizado = periodoAtual === "personalizado";
+    periodoCustomEl.classList.toggle("hidden", !personalizado);
+    if (personalizado && !inputCustomDe.value) {
+      inputCustomDe.value = hojeISO();
+      inputCustomAte.value = hojeISO();
+    }
     renderizar();
   });
 });
 
+[inputCustomDe, inputCustomAte].forEach((input) => {
+  input.addEventListener("change", () => {
+    if (periodoAtual === "personalizado") renderizar();
+  });
+});
+
 /* ==================================================================
-   FORMULÁRIO MANUAL
+   FORMULÁRIO MANUAL — alterna Despesa / Receita
    ================================================================== */
 const form = document.getElementById("form-gasto");
 const campoData = document.getElementById("campo-data");
+const campoTipo = document.getElementById("campo-tipo");
+const campoCategoria = document.getElementById("campo-categoria");
+const campoValor = document.getElementById("campo-valor");
+const btnSalvarGasto = document.getElementById("btn-salvar-gasto");
 campoData.value = hojeISO();
+
+function popularCategorias(tipo) {
+  const lista = categoriasDoTipo(tipo);
+  const atual = campoCategoria.value;
+  campoCategoria.innerHTML = lista
+    .map((c) => `<option value="${escapeHTML(c)}">${ICONES_CATEGORIA[c] ?? "🏷️"}  ${escapeHTML(c)}</option>`)
+    .join("");
+  if (lista.includes(atual)) campoCategoria.value = atual;
+}
+
+function selecionarTipo(tipo) {
+  campoTipo.value = tipo;
+  document.querySelectorAll(".tipo-btn").forEach((b) => {
+    const ativo = b.dataset.tipo === tipo;
+    b.classList.toggle("tipo-active-despesa", ativo && tipo === "despesa");
+    b.classList.toggle("tipo-active-receita", ativo && tipo === "receita");
+  });
+  popularCategorias(tipo);
+  btnSalvarGasto.textContent = tipo === "receita" ? "Salvar receita" : "Salvar gasto";
+  btnSalvarGasto.classList.toggle("bg-forest", true); // mesma cor de marca nos dois casos
+  fecharFormNovaCategoria();
+}
+
+document.querySelectorAll(".tipo-btn").forEach((btn) => {
+  btn.addEventListener("click", () => selecionarTipo(btn.dataset.tipo));
+});
+
+/* ==================================================================
+   CRIAR / REMOVER CATEGORIA PERSONALIZADA
+   ================================================================== */
+const btnNovaCategoria = document.getElementById("btn-nova-categoria");
+const novaCategoriaForm = document.getElementById("nova-categoria-form");
+const inputCategoriaEmoji = document.getElementById("input-categoria-emoji");
+const inputCategoriaNome = document.getElementById("input-categoria-nome");
+const inputCategoriaCor = document.getElementById("input-categoria-cor");
+const listaCategoriasCustomEl = document.getElementById("lista-categorias-custom");
+
+const normalizarTextoCategoria = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+function renderizarListaCategoriasCustom() {
+  const tipo = campoTipo.value;
+  const lista = categoriasCustom[tipo];
+  if (lista.length === 0) {
+    listaCategoriasCustomEl.innerHTML = "";
+    return;
+  }
+  listaCategoriasCustomEl.innerHTML =
+    `<p class="text-[11px] text-ink/40 pt-1">Suas categorias:</p>` +
+    lista
+      .map(
+        (c) => `
+      <div class="flex items-center justify-between text-sm bg-white rounded-lg pl-3 pr-1 py-1.5 border border-black/5">
+        <span class="truncate">${c.icone || "🏷️"} ${escapeHTML(c.nome)}</span>
+        <button type="button" data-remover-categoria="${escapeHTML(c.nome)}"
+                class="text-ink/30 hover:text-coral active:text-coral text-xs font-medium px-2 py-1 transition-colors">
+          Remover
+        </button>
+      </div>`
+      )
+      .join("");
+}
+
+function abrirFormNovaCategoria() {
+  novaCategoriaForm.classList.remove("hidden");
+  inputCategoriaEmoji.value = "";
+  inputCategoriaNome.value = "";
+  inputCategoriaCor.value = "#8B5CF6";
+  inputCategoriaCor.classList.toggle("invisible", campoTipo.value !== "despesa");
+  renderizarListaCategoriasCustom();
+  inputCategoriaNome.focus();
+}
+
+function fecharFormNovaCategoria() {
+  novaCategoriaForm.classList.add("hidden");
+}
+
+btnNovaCategoria.addEventListener("click", () => {
+  if (novaCategoriaForm.classList.contains("hidden")) abrirFormNovaCategoria();
+  else fecharFormNovaCategoria();
+});
+
+document.getElementById("btn-cancelar-categoria").addEventListener("click", fecharFormNovaCategoria);
+
+document.getElementById("btn-salvar-categoria").addEventListener("click", () => {
+  const tipo = campoTipo.value;
+  const nome = capitalizar(inputCategoriaNome.value.trim());
+
+  if (!nome) {
+    mostrarToast("Digite um nome para a categoria.");
+    inputCategoriaNome.focus();
+    return;
+  }
+  const jaExiste = categoriasDoTipo(tipo).some(
+    (c) => normalizarTextoCategoria(c) === normalizarTextoCategoria(nome)
+  );
+  if (jaExiste) {
+    mostrarToast("Essa categoria já existe.");
+    return;
+  }
+
+  const nova = {
+    nome,
+    icone: inputCategoriaEmoji.value.trim() || "🏷️",
+    cor: tipo === "despesa" ? inputCategoriaCor.value : undefined,
+  };
+  categoriasCustom[tipo].push(nova);
+  salvarCategoriasCustomStorage();
+  registrarCategoriaNosMapas(tipo, nova);
+
+  popularCategorias(tipo);
+  campoCategoria.value = nome;
+
+  inputCategoriaEmoji.value = "";
+  inputCategoriaNome.value = "";
+  renderizarListaCategoriasCustom();
+  mostrarToast(`Categoria "${nome}" criada ✓`);
+  inputCategoriaNome.focus();
+});
+
+// Remover categoria personalizada (delegação de evento).
+listaCategoriasCustomEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remover-categoria]");
+  if (!btn) return;
+  const nome = btn.getAttribute("data-remover-categoria");
+  const tipo = campoTipo.value;
+
+  const emUso = gastos.some((g) => g.tipo === tipo && g.categoria === nome);
+  if (emUso) {
+    const confirmado = confirm(
+      `Existem lançamentos usando "${nome}". Se remover, eles passarão a aparecer como "Outros". Continuar?`
+    );
+    if (!confirmado) return;
+    gastos = gastos.map((g) =>
+      g.tipo === tipo && g.categoria === nome ? { ...g, categoria: "Outros" } : g
+    );
+    salvarGastos(gastos);
+    renderizar();
+  }
+
+  categoriasCustom[tipo] = categoriasCustom[tipo].filter((c) => c.nome !== nome);
+  salvarCategoriasCustomStorage();
+  delete ICONES_CATEGORIA[nome];
+  delete CORES_CATEGORIA[nome];
+
+  if (campoCategoria.value === nome) campoCategoria.value = "";
+  popularCategorias(tipo);
+  renderizarListaCategoriasCustom();
+  mostrarToast("Categoria removida.");
+});
+
+selecionarTipo("despesa"); // estado inicial
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -511,6 +960,7 @@ form.addEventListener("submit", (e) => {
 
   const novoGasto = {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    tipo: dados.get("tipo") === "receita" ? "receita" : "despesa",
     descricao: (dados.get("descricao") || "").trim(),
     valor: parseFloat(String(dados.get("valor")).replace(",", ".")) || 0,
     categoria: dados.get("categoria") || "Outros",
@@ -526,25 +976,48 @@ form.addEventListener("submit", (e) => {
   salvarGastos(gastos);
   renderizar();
 
+  // Alerta de orçamento: só faz sentido para despesas do mês corrente.
+  const orcamento = obterOrcamento();
+  let ultrapassouOrcamento = false;
+  if (novoGasto.tipo === "despesa" && orcamento > 0) {
+    const [ano, mes] = novoGasto.data.split("-").map(Number);
+    const agora = new Date();
+    const ehMesAtual = ano === agora.getFullYear() && mes === agora.getMonth() + 1;
+    ultrapassouOrcamento = ehMesAtual && calcularDespesasMesAtual() > orcamento;
+  }
+
   form.reset();
   campoData.value = hojeISO();
+  selecionarTipo("despesa");
   document.getElementById("form-details").open = false;
-  mostrarToast("Gasto salvo ✓");
+
+  if (ultrapassouOrcamento) {
+    mostrarToast("⚠️ Salvo — você ultrapassou o orçamento mensal.");
+  } else {
+    mostrarToast(novoGasto.tipo === "receita" ? "Receita salva ✓" : "Gasto salvo ✓");
+  }
 });
 
 /* ==================================================================
    RECONHECIMENTO DE VOZ (Web Speech API)
    Funciona em Chrome/Edge (desktop e Android) e Safari iOS 14.5+.
-   Requer HTTPS (ou localhost) e permissão de microfone — veja as
-   instruções de teste no final deste arquivo.
+   Requer HTTPS (ou localhost) e permissão de microfone.
    ================================================================== */
 const btnVoz = document.getElementById("btn-voz");
 const statusVoz = document.getElementById("status-voz");
 const iconeMic = document.getElementById("icone-mic");
+const ondaVoz = document.getElementById("onda-voz");
 
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 let reconhecimento = null;
 let ouvindo = false;
+
+function mostrarEstadoOuvindo(ativo) {
+  ouvindo = ativo;
+  btnVoz.classList.toggle("listening", ativo);
+  iconeMic.classList.toggle("hidden", ativo);
+  ondaVoz.classList.toggle("hidden", !ativo);
+}
 
 if (SpeechRecognitionAPI) {
   reconhecimento = new SpeechRecognitionAPI();
@@ -554,26 +1027,22 @@ if (SpeechRecognitionAPI) {
   reconhecimento.maxAlternatives = 1;
 
   reconhecimento.onstart = () => {
-    ouvindo = true;
-    btnVoz.classList.add("listening");
+    mostrarEstadoOuvindo(true);
     statusVoz.textContent = "Ouvindo... pode falar.";
   };
 
   reconhecimento.onerror = (evento) => {
-    ouvindo = false;
-    btnVoz.classList.remove("listening");
+    mostrarEstadoOuvindo(false);
     const mensagens = {
       "not-allowed": "Permissão de microfone negada. Habilite nas configurações do navegador.",
       "no-speech": "Não entendi nada. Tente novamente.",
       "audio-capture": "Nenhum microfone encontrado.",
+      "network": "Sem conexão para transcrever a voz. Use o formulário manual.",
     };
     statusVoz.textContent = mensagens[evento.error] || "Erro ao gravar. Tente novamente.";
   };
 
-  reconhecimento.onend = () => {
-    ouvindo = false;
-    btnVoz.classList.remove("listening");
-  };
+  reconhecimento.onend = () => mostrarEstadoOuvindo(false);
 
   reconhecimento.onresult = (evento) => {
     const transcricao = evento.results[0][0].transcript;
@@ -589,86 +1058,85 @@ if (SpeechRecognitionAPI) {
     try {
       reconhecimento.start();
     } catch (e) {
-      // Chamar start() duas vezes seguidas gera erro; ignoramos com segurança.
       console.warn(e);
     }
   });
 } else {
-  // Navegador sem suporte à Web Speech API (ex.: Firefox desktop)
   btnVoz.disabled = true;
   btnVoz.classList.add("opacity-40");
   statusVoz.textContent = "Seu navegador não suporta gravação por voz. Use o formulário manual abaixo.";
 }
 
+const PALAVRAS_RECEITA = ["recebi", "receita", "ganhei", "entrada", "recebimento"];
+const normalizarTexto = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 /**
  * Interpreta frases no padrão "Descrição [Valor] [Categoria]", por
- * exemplo: "Almoço 25 reais alimentação" ou "Uber 15 transporte".
+ * exemplo: "Almoço 25 reais alimentação", "Uber 15 transporte" ou
+ * "Recebi 3000 de salário".
  *
- * Estratégia:
- *  1. Localiza o primeiro número na frase (com vírgula ou ponto decimal) → valor.
- *  2. Tudo ANTES do número vira a descrição.
- *  3. Tudo DEPOIS do número (removendo palavras como "reais"/"r$") vira a categoria,
- *     que é comparada com a lista de categorias conhecidas.
+ * 1. Detecta se é receita (palavras como "recebi"/"ganhei") ou despesa.
+ * 2. Localiza o primeiro número na frase → valor.
+ * 3. Tudo antes do número vira a descrição; tudo depois é comparado
+ *    com as categorias do tipo detectado.
+ * 4. Se nenhum valor for identificado, preenche a descrição, foca o
+ *    campo de valor e pede para o usuário completar manualmente —
+ *    em vez de simplesmente falhar.
  */
 function processarFraseDeVoz(frase) {
-  const regex = /^(.*?)\s*(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais|real|r\$)?\s*(.*)$/i;
+  const tipoDetectado = PALAVRAS_RECEITA.some((p) => normalizarTexto(frase).includes(p))
+    ? "receita"
+    : "despesa";
+
+  const regex = /^(.*?)\s*(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais|real|r\$)?\s*(?:de\s+)?(.*)$/i;
   const match = frase.match(regex);
 
-  if (!match) {
-    statusVoz.textContent = `Não consegui identificar um valor em "${frase}". Ajuste manualmente abaixo.`;
-    document.getElementById("campo-descricao").value = frase;
-    document.getElementById("form-details").open = true;
+  selecionarTipo(tipoDetectado);
+  document.getElementById("form-details").open = true;
+
+  if (!match || isNaN(parseFloat(match[2].replace(",", ".")))) {
+    document.getElementById("campo-descricao").value = capitalizar(frase.trim());
+    campoValor.value = "";
+    statusVoz.textContent = `Não identifiquei o valor em "${frase}". Confira a descrição e digite o valor abaixo.`;
+    campoValor.classList.add("ring-2", "ring-coral");
+    campoValor.focus();
+    setTimeout(() => campoValor.classList.remove("ring-2", "ring-coral"), 2500);
     return;
   }
 
-  const descricao = capitalizar(match[1].trim() || "Gasto");
+  const descricao = capitalizar(match[1].trim() || (tipoDetectado === "receita" ? "Receita" : "Gasto"));
   const valor = parseFloat(match[2].replace(",", "."));
   const restoTexto = match[3].trim();
 
-  const categoriasConhecidas = [
-    "Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Compras", "Educação", "Outros",
-  ];
-  // Tenta casar o texto restante com uma categoria conhecida (ignorando acentos/maiúsculas)
-  const normalizar = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  let categoria = categoriasConhecidas.find((c) => normalizar(restoTexto).includes(normalizar(c)));
-  if (!categoria) categoria = restoTexto ? capitalizar(restoTexto) : "Outros";
+  const categoriasDisponiveis = categoriasDoTipo(tipoDetectado);
+  let categoria = categoriasDisponiveis.find((c) => normalizarTexto(restoTexto).includes(normalizarTexto(c)));
+  if (!categoria) categoria = "Outros";
 
-  // Preenche o formulário para revisão do usuário antes de salvar
   document.getElementById("campo-descricao").value = descricao;
-  document.getElementById("campo-valor").value = isNaN(valor) ? "" : valor.toFixed(2);
-  document.getElementById("campo-data").value = hojeISO();
+  campoValor.value = valor.toFixed(2);
+  campoData.value = hojeISO();
+  campoCategoria.value = categoria;
 
-  const selectCategoria = document.getElementById("campo-categoria");
-  const opcaoExiste = Array.from(selectCategoria.options).some((o) => o.value === categoria);
-  selectCategoria.value = opcaoExiste ? categoria : "Outros";
-
-  document.getElementById("form-details").open = true;
-  statusVoz.textContent = `Entendi: ${descricao} · ${formatarMoeda(valor || 0)} · ${categoria}. Confira e salve.`;
-}
-
-function capitalizar(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  statusVoz.textContent = `Entendi: ${descricao} · ${formatarMoeda(valor)} · ${categoria}. Confira e salve.`;
 }
 
 /* ==================================================================
    EXPORTAR CSV
-   Gera um arquivo .csv com ; como separador (compatível com o Excel
-   em português, que usa vírgula como separador decimal) e força o
-   download no navegador.
    ================================================================== */
 document.getElementById("btn-exportar").addEventListener("click", () => {
   if (gastos.length === 0) {
-    mostrarToast("Não há gastos para exportar.");
+    mostrarToast("Não há registros para exportar.");
     return;
   }
 
-  const linhas = [["Data", "Descrição", "Valor", "Categoria"]];
+  const linhas = [["Data", "Tipo", "Descrição", "Valor", "Categoria"]];
   gastos
     .slice()
     .sort((a, b) => (a.data > b.data ? 1 : -1))
     .forEach((g) => {
       linhas.push([
         formatarDataExibicao(g.data),
+        g.tipo === "receita" ? "Receita" : "Despesa",
         g.descricao,
         g.valor.toFixed(2).replace(".", ","),
         g.categoria,
@@ -679,7 +1147,6 @@ document.getElementById("btn-exportar").addEventListener("click", () => {
     .map((linha) => linha.map((campo) => `"${String(campo).replace(/"/g, '""')}"`).join(";"))
     .join("\r\n");
 
-  // BOM (\uFEFF) garante que o Excel reconheça acentuação em UTF-8 corretamente
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -694,6 +1161,9 @@ document.getElementById("btn-exportar").addEventListener("click", () => {
 
 /* ==================================================================
    LIMPAR DADOS (com confirmação)
+   Remove apenas os registros de gastos/receitas — o orçamento
+   definido continua salvo, já que é uma configuração e não um dado
+   lançado.
    ================================================================== */
 document.getElementById("btn-limpar").addEventListener("click", () => {
   if (gastos.length === 0) {
@@ -701,14 +1171,14 @@ document.getElementById("btn-limpar").addEventListener("click", () => {
     return;
   }
   const confirmado = confirm(
-    "Isso vai apagar TODOS os gastos salvos neste dispositivo. Essa ação não pode ser desfeita. Continuar?"
+    "Isso vai apagar TODOS os registros salvos neste dispositivo (o orçamento definido não será afetado). Essa ação não pode ser desfeita. Continuar?"
   );
   if (!confirmado) return;
 
   gastos = [];
   salvarGastos(gastos);
   renderizar();
-  mostrarToast("Todos os dados foram apagados.");
+  mostrarToast("Todos os registros foram apagados.");
 });
 
 /* ==================================================================
@@ -722,7 +1192,6 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// Captura o evento de instalação para, opcionalmente, mostrar um aviso
 let promptInstalacao = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();

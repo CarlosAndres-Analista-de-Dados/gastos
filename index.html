@@ -1117,7 +1117,10 @@ function processarFraseDeVoz(frase) {
   campoData.value = hojeISO();
   campoCategoria.value = categoria;
 
-  statusVoz.textContent = `Entendi: ${descricao} · ${formatarMoeda(valor)} · ${categoria}. Confira e salve.`;
+  // Valor identificado com sucesso: salva direto, sem precisar confirmar.
+  document.getElementById("form-details").open = false;
+  statusVoz.textContent = `Salvo: ${descricao} · ${formatarMoeda(valor)} · ${categoria} ✓`;
+  form.requestSubmit();
 }
 
 /* ==================================================================

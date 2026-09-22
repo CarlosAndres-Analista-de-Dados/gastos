@@ -187,16 +187,45 @@
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-display text-lg font-medium">Registros</h2>
-        <span id="contagem-registros" class="text-xs text-ink/50">0 itens</span>
+        <div class="flex gap-1 bg-black/5 p-1 rounded-full text-xs">
+          <button data-visao="lista" class="visao-btn px-3 py-1 rounded-full transition-colors tab-active">Lista</button>
+          <button data-visao="grafico" class="visao-btn px-3 py-1 rounded-full transition-colors">Por categoria</button>
+        </div>
       </div>
 
-      <ul id="lista-gastos" class="space-y-2 max-h-[26rem] overflow-y-auto thin-scroll pr-1">
-        <!-- Itens inseridos via JavaScript -->
-      </ul>
+      <!-- Visão: lista de registros -->
+      <div id="visao-lista">
+        <div class="flex justify-end mb-2">
+          <span id="contagem-registros" class="text-xs text-ink/50">0 itens</span>
+        </div>
 
-      <p id="estado-vazio" class="text-sm text-ink/40 text-center py-10 hidden">
-        Nenhum gasto registrado neste período ainda.
-      </p>
+        <ul id="lista-gastos" class="space-y-2 max-h-[26rem] overflow-y-auto thin-scroll pr-1">
+          <!-- Itens inseridos via JavaScript -->
+        </ul>
+
+        <p id="estado-vazio" class="text-sm text-ink/40 text-center py-10 hidden">
+          Nenhum gasto registrado neste período ainda.
+        </p>
+      </div>
+
+      <!-- Visão: gráfico de gastos por categoria (donut + legenda) -->
+      <div id="visao-grafico" class="hidden flex flex-col items-center py-2">
+        <div class="relative w-40 h-40 mb-6">
+          <div id="donut-categorias" class="w-40 h-40 rounded-full"></div>
+          <div class="absolute inset-0 m-auto w-24 h-24 bg-paper rounded-full flex flex-col items-center justify-center">
+            <span class="text-[10px] uppercase tracking-wide text-ink/40">Total</span>
+            <span id="donut-total" class="font-display text-sm font-semibold leading-tight text-center px-1"></span>
+          </div>
+        </div>
+
+        <div id="legenda-categorias" class="w-full space-y-3">
+          <!-- Itens inseridos via JavaScript -->
+        </div>
+
+        <p id="estado-vazio-grafico" class="text-sm text-ink/40 text-center py-10 hidden">
+          Nenhum gasto registrado neste período ainda.
+        </p>
+      </div>
     </section>
 
     <!-- ============================================================
@@ -314,6 +343,13 @@ const ICONES_CATEGORIA = {
   "Lazer": "🎬", "Compras": "🛍️", "Educação": "📚", "Outros": "📎",
 };
 
+// Uma cor fixa por categoria, usada no gráfico (donut) e na legenda.
+const CORES_CATEGORIA = {
+  "Alimentação": "#C4573D", "Transporte": "#2F6F5E", "Moradia": "#E8A33D",
+  "Saúde": "#3E8B76", "Lazer": "#8B5CF6", "Compras": "#D97706",
+  "Educação": "#0EA5E9", "Outros": "#94A3B8",
+};
+
 function renderizar() {
   const filtrados = filtrarPorPeriodo(gastos)
     .slice()
@@ -351,7 +387,88 @@ function renderizar() {
   contagemEl.textContent = `${filtrados.length} ${filtrados.length === 1 ? "item" : "itens"}`;
   periodoLabelEl.textContent =
     periodoAtual === "hoje" ? "hoje" : periodoAtual === "mes" ? "este mês" : "todo o período";
+
+  renderizarGrafico(filtrados);
 }
+
+/* ==================================================================
+   GRÁFICO POR CATEGORIA (donut + legenda)
+   Agrupa os gastos do período atualmente filtrado por categoria e
+   desenha um donut com conic-gradient (CSS puro, sem bibliotecas)
+   mais uma legenda com barras proporcionais.
+   ================================================================== */
+const donutEl = document.getElementById("donut-categorias");
+const donutTotalEl = document.getElementById("donut-total");
+const legendaEl = document.getElementById("legenda-categorias");
+const estadoVazioGraficoEl = document.getElementById("estado-vazio-grafico");
+
+function renderizarGrafico(filtrados) {
+  const porCategoria = {};
+  let total = 0;
+  for (const g of filtrados) {
+    porCategoria[g.categoria] = (porCategoria[g.categoria] || 0) + g.valor;
+    total += g.valor;
+  }
+
+  const categoriasOrdenadas = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
+
+  legendaEl.innerHTML = "";
+  donutTotalEl.textContent = formatarMoeda(total);
+  estadoVazioGraficoEl.classList.toggle("hidden", categoriasOrdenadas.length > 0);
+  donutEl.style.visibility = categoriasOrdenadas.length > 0 ? "visible" : "hidden";
+
+  if (categoriasOrdenadas.length === 0) return;
+
+  // Monta o gradiente cônico do donut: cada categoria ocupa uma fatia
+  // proporcional ao seu valor, em graus (0 a 360).
+  let acumulado = 0;
+  const partesGradiente = categoriasOrdenadas.map(([categoria, valor]) => {
+    const cor = CORES_CATEGORIA[categoria] || "#94A3B8";
+    const inicio = (acumulado / total) * 360;
+    acumulado += valor;
+    const fim = (acumulado / total) * 360;
+    return `${cor} ${inicio.toFixed(2)}deg ${fim.toFixed(2)}deg`;
+  });
+  donutEl.style.background = `conic-gradient(${partesGradiente.join(", ")})`;
+
+  // Legenda: uma linha por categoria, com pontinho colorido, valor,
+  // percentual e uma barrinha proporcional.
+  for (const [categoria, valor] of categoriasOrdenadas) {
+    const cor = CORES_CATEGORIA[categoria] || "#94A3B8";
+    const percentual = total > 0 ? (valor / total) * 100 : 0;
+
+    const linha = document.createElement("div");
+    linha.innerHTML = `
+      <div class="flex items-center justify-between text-sm mb-1 gap-2">
+        <span class="flex items-center gap-2 min-w-0">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${cor}"></span>
+          <span class="truncate">${ICONES_CATEGORIA[categoria] ?? "📎"} ${categoria}</span>
+        </span>
+        <span class="text-ink/70 shrink-0 text-right">${formatarMoeda(valor)} · ${percentual.toFixed(0)}%</span>
+      </div>
+      <div class="h-1.5 bg-black/5 rounded-full overflow-hidden">
+        <div class="h-full rounded-full" style="width:${percentual}%; background:${cor}"></div>
+      </div>`;
+    legendaEl.appendChild(linha);
+  }
+}
+
+/* ==================================================================
+   ABAS: LISTA x GRÁFICO POR CATEGORIA
+   ================================================================== */
+const visaoListaEl = document.getElementById("visao-lista");
+const visaoGraficoEl = document.getElementById("visao-grafico");
+
+document.querySelectorAll(".visao-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".visao-btn").forEach((b) => b.classList.remove("tab-active"));
+    btn.classList.add("tab-active");
+
+    const visao = btn.dataset.visao;
+    visaoListaEl.classList.toggle("hidden", visao !== "lista");
+    visaoGraficoEl.classList.toggle("hidden", visao !== "grafico");
+  });
+});
 
 function escapeHTML(str) {
   const div = document.createElement("div");

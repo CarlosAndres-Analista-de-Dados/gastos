@@ -3,7 +3,7 @@
 // Os DADOS ficam no localStorage (não no cache do Service Worker) — por isso
 // não somem quando o cache é atualizado.
 
-const CACHE_NAME = "meus-gastos-cache-v1";
+const CACHE_NAME = "meus-gastos-cache-v2";
 
 // Lista de arquivos que compõem o "esqueleto" do app.
 // Se você trocar o nome dos arquivos, atualize aqui também.

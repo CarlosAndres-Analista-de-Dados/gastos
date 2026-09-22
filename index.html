@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Meus Gastos — Controle Financeiro</title>
+<meta name="description" content="Controle de gastos pessoais com registro por voz, funciona offline." />
+
+<!-- ============================================================
+     CONFIGURAÇÃO PWA
+     - manifest.json: diz ao navegador como instalar o app
+     - theme-color: cor da barra do navegador/status bar
+     - apple-touch-icon e meta tags: suporte a "Adicionar à Tela de
+       Início" no iOS (Safari não lê o manifest.json completo)
+     ============================================================ -->
+<link rel="manifest" href="./manifest.json" />
+<meta name="theme-color" content="#2F6F5E" />
+<link rel="icon" href="./icon-192.png" />
+<link rel="apple-touch-icon" href="./icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Meus Gastos" />
+
+<!-- Tailwind via CDN, conforme solicitado -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script>
+  // Extende a paleta padrão do Tailwind com as cores da identidade do app.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#1F2A24',
+          paper: '#FAF8F5',
+          forest: { DEFAULT: '#2F6F5E', dark: '#265C4E', light: '#3E8B76' },
+          gold: '#E8A33D',
+          coral: '#C4573D',
+        },
+        fontFamily: {
+          display: ['Fraunces', 'serif'],
+          sans: ['IBM Plex Sans', 'ui-sans-serif', 'system-ui'],
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html, body { background: #FAF8F5; }
+  body { -webkit-tap-highlight-color: transparent; }
+
+  /* Respeita a área segura em celulares com notch/barra de gestos */
+  :root {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Animação sutil do botão de voz enquanto está ouvindo */
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(196, 87, 61, 0.45); }
+    100% { box-shadow: 0 0 0 22px rgba(196, 87, 61, 0); }
+  }
+  .listening { animation: pulse-ring 1.4s ease-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .listening { animation: none; }
+  }
+
+  /* Barra de rolagem discreta para a lista de gastos */
+  .thin-scroll::-webkit-scrollbar { width: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: #d8d2c7; border-radius: 999px; }
+
+  .tab-active { background: #1F2A24; color: #FAF8F5; }
+</style>
+</head>
+
+<body class="font-sans text-ink bg-paper min-h-screen">
+
+  <!-- ============================================================
+       CABEÇALHO
+       Mostra o nome do app e o total gasto no período selecionado.
+       ============================================================ -->
+  <header class="sticky top-0 z-20 bg-paper/90 backdrop-blur border-b border-black/5">
+    <div class="max-w-md mx-auto px-5 pt-5 pb-4">
+      <div class="flex items-baseline justify-between">
+        <h1 class="font-display text-2xl font-semibold tracking-tight">Meus Gastos</h1>
+        <span id="periodo-label" class="text-xs text-ink/50">este mês</span>
+      </div>
+      <p class="font-display text-4xl font-semibold mt-1" id="total-periodo">R$ 0,00</p>
+
+      <!-- Abas de período -->
+      <div class="flex gap-1.5 mt-4 bg-black/5 p-1 rounded-full text-sm">
+        <button data-periodo="hoje" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors">Hoje</button>
+        <button data-periodo="mes" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors tab-active">Mês</button>
+        <button data-periodo="todos" class="periodo-btn flex-1 py-1.5 rounded-full transition-colors">Todos</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-5 pb-28 pt-6 space-y-8">
+
+    <!-- ============================================================
+         BOTÃO DE GRAVAÇÃO POR VOZ
+         ============================================================ -->
+    <section class="flex flex-col items-center text-center gap-3">
+      <button id="btn-voz"
+        class="relative w-28 h-28 rounded-full bg-coral text-paper flex items-center justify-center
+               shadow-lg shadow-coral/30 active:scale-95 transition-transform">
+        <svg id="icone-mic" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8" class="w-10 h-10">
+          <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/>
+          <path d="M19 11a7 7 0 0 1-14 0M12 18v3"/>
+        </svg>
+      </button>
+      <p id="status-voz" class="text-sm text-ink/60 max-w-[15rem]">
+        Toque e diga, por exemplo: <span class="italic">"Almoço 25 reais alimentação"</span>
+      </p>
+    </section>
+
+    <!-- ============================================================
+         FORMULÁRIO MANUAL
+         Também é preenchido automaticamente pelo reconhecimento de voz.
+         ============================================================ -->
+    <section>
+      <details id="form-details" class="group">
+        <summary class="cursor-pointer select-none flex items-center justify-between
+                         font-display text-lg font-medium text-ink/90 py-1">
+          Adicionar / ajustar manualmente
+          <svg class="w-4 h-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+
+        <form id="form-gasto" class="mt-4 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-descricao">Descrição</label>
+            <input id="campo-descricao" name="descricao" type="text" required placeholder="Ex.: Almoço"
+                   class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                          focus:outline-none focus:ring-2 focus:ring-forest/40" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-valor">Valor (R$)</label>
+              <input id="campo-valor" name="valor" type="number" step="0.01" min="0" required placeholder="0,00"
+                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                            focus:outline-none focus:ring-2 focus:ring-forest/40" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-data">Data</label>
+              <input id="campo-data" name="data" type="date" required
+                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                            focus:outline-none focus:ring-2 focus:ring-forest/40" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-categoria">Categoria</label>
+            <select id="campo-categoria" name="categoria"
+                    class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-forest/40">
+              <option>Alimentação</option>
+              <option>Transporte</option>
+              <option>Moradia</option>
+              <option>Saúde</option>
+              <option>Lazer</option>
+              <option>Compras</option>
+              <option>Educação</option>
+              <option>Outros</option>
+            </select>
+          </div>
+
+          <button type="submit"
+                  class="w-full bg-forest hover:bg-forest-dark text-paper font-medium py-3 rounded-xl
+                         transition-colors">
+            Salvar gasto
+          </button>
+        </form>
+      </details>
+    </section>
+
+    <!-- ============================================================
+         LISTA DE GASTOS
+         ============================================================ -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-display text-lg font-medium">Registros</h2>
+        <span id="contagem-registros" class="text-xs text-ink/50">0 itens</span>
+      </div>
+
+      <ul id="lista-gastos" class="space-y-2 max-h-[26rem] overflow-y-auto thin-scroll pr-1">
+        <!-- Itens inseridos via JavaScript -->
+      </ul>
+
+      <p id="estado-vazio" class="text-sm text-ink/40 text-center py-10 hidden">
+        Nenhum gasto registrado neste período ainda.
+      </p>
+    </section>
+
+    <!-- ============================================================
+         AÇÕES: EXPORTAR / LIMPAR
+         ============================================================ -->
+    <section class="flex gap-3 pt-2">
+      <button id="btn-exportar"
+        class="flex-1 flex items-center justify-center gap-2 border border-ink/15 text-ink
+               font-medium py-3 rounded-xl active:bg-black/5 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" class="w-4 h-4"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>
+        Exportar CSV
+      </button>
+      <button id="btn-limpar"
+        class="flex items-center justify-center gap-2 border border-coral/30 text-coral
+               font-medium py-3 px-4 rounded-xl active:bg-coral/5 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" class="w-4 h-4"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0 1 12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-12"/></svg>
+      </button>
+    </section>
+  </main>
+
+  <!-- Aviso de instalação (some sozinho após alguns segundos) -->
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-ink text-paper text-sm
+                          px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none
+                          transition-opacity duration-300 z-30"></div>
+
+<script>
+/* ==================================================================
+   ESTADO E ARMAZENAMENTO (localStorage)
+   Cada gasto: { id, descricao, valor, categoria, data (YYYY-MM-DD) }
+   ================================================================== */
+const CHAVE_STORAGE = "meus-gastos:registros";
+
+function carregarGastos() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_STORAGE);
+    return bruto ? JSON.parse(bruto) : [];
+  } catch (e) {
+    console.error("Erro ao ler localStorage:", e);
+    return [];
+  }
+}
+
+function salvarGastos(lista) {
+  localStorage.setItem(CHAVE_STORAGE, JSON.stringify(lista));
+}
+
+let gastos = carregarGastos();
+let periodoAtual = "mes"; // 'hoje' | 'mes' | 'todos'
+
+/* ==================================================================
+   UTILITÁRIOS
+   ================================================================== */
+function formatarMoeda(valor) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatarDataExibicao(isoData) {
+  const [ano, mes, dia] = isoData.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+function mostrarToast(mensagem) {
+  const toast = document.getElementById("toast");
+  toast.textContent = mensagem;
+  toast.classList.remove("opacity-0");
+  toast.classList.add("opacity-100");
+  clearTimeout(mostrarToast._t);
+  mostrarToast._t = setTimeout(() => {
+    toast.classList.remove("opacity-100");
+    toast.classList.add("opacity-0");
+  }, 2400);
+}
+
+/* ==================================================================
+   FILTRO POR PERÍODO
+   ================================================================== */
+function filtrarPorPeriodo(lista) {
+  if (periodoAtual === "todos") return lista;
+
+  const agora = new Date();
+  const anoAtual = agora.getFullYear();
+  const mesAtual = agora.getMonth();
+  const hojeStr = hojeISO();
+
+  return lista.filter((g) => {
+    if (periodoAtual === "hoje") return g.data === hojeStr;
+    if (periodoAtual === "mes") {
+      const [ano, mes] = g.data.split("-").map(Number);
+      return ano === anoAtual && mes === mesAtual + 1;
+    }
+    return true;
+  });
+}
+
+/* ==================================================================
+   RENDERIZAÇÃO
+   ================================================================== */
+const listaEl = document.getElementById("lista-gastos");
+const estadoVazioEl = document.getElementById("estado-vazio");
+const totalPeriodoEl = document.getElementById("total-periodo");
+const contagemEl = document.getElementById("contagem-registros");
+const periodoLabelEl = document.getElementById("periodo-label");
+
+const ICONES_CATEGORIA = {
+  "Alimentação": "🍽️", "Transporte": "🚗", "Moradia": "🏠", "Saúde": "💊",
+  "Lazer": "🎬", "Compras": "🛍️", "Educação": "📚", "Outros": "📎",
+};
+
+function renderizar() {
+  const filtrados = filtrarPorPeriodo(gastos)
+    .slice()
+    .sort((a, b) => (a.data < b.data ? 1 : -1));
+
+  listaEl.innerHTML = "";
+  estadoVazioEl.classList.toggle("hidden", filtrados.length > 0);
+
+  let total = 0;
+  for (const g of filtrados) {
+    total += g.valor;
+
+    const li = document.createElement("li");
+    li.className = "flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-black/5";
+    li.innerHTML = `
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xl leading-none">${ICONES_CATEGORIA[g.categoria] ?? "📎"}</span>
+        <div class="min-w-0">
+          <p class="font-medium text-sm truncate">${escapeHTML(g.descricao)}</p>
+          <p class="text-xs text-ink/50">${g.categoria} · ${formatarDataExibicao(g.data)}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="font-display font-semibold text-sm">${formatarMoeda(g.valor)}</span>
+        <button data-remover="${g.id}" aria-label="Remover"
+          class="text-ink/30 hover:text-coral transition-colors p-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" class="w-4 h-4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>`;
+    listaEl.appendChild(li);
+  }
+
+  totalPeriodoEl.textContent = formatarMoeda(total);
+  contagemEl.textContent = `${filtrados.length} ${filtrados.length === 1 ? "item" : "itens"}`;
+  periodoLabelEl.textContent =
+    periodoAtual === "hoje" ? "hoje" : periodoAtual === "mes" ? "este mês" : "todo o período";
+}
+
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Remoção de um item (delegação de evento)
+listaEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remover]");
+  if (!btn) return;
+  const id = btn.getAttribute("data-remover");
+  gastos = gastos.filter((g) => g.id !== id);
+  salvarGastos(gastos);
+  renderizar();
+});
+
+/* ==================================================================
+   ABAS DE PERÍODO
+   ================================================================== */
+document.querySelectorAll(".periodo-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    periodoAtual = btn.dataset.periodo;
+    document.querySelectorAll(".periodo-btn").forEach((b) => b.classList.remove("tab-active"));
+    btn.classList.add("tab-active");
+    renderizar();
+  });
+});
+
+/* ==================================================================
+   FORMULÁRIO MANUAL
+   ================================================================== */
+const form = document.getElementById("form-gasto");
+const campoData = document.getElementById("campo-data");
+campoData.value = hojeISO();
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const dados = new FormData(form);
+
+  const novoGasto = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    descricao: (dados.get("descricao") || "").trim(),
+    valor: parseFloat(String(dados.get("valor")).replace(",", ".")) || 0,
+    categoria: dados.get("categoria") || "Outros",
+    data: dados.get("data") || hojeISO(),
+  };
+
+  if (!novoGasto.descricao || novoGasto.valor <= 0) {
+    mostrarToast("Preencha descrição e um valor válido.");
+    return;
+  }
+
+  gastos.push(novoGasto);
+  salvarGastos(gastos);
+  renderizar();
+
+  form.reset();
+  campoData.value = hojeISO();
+  document.getElementById("form-details").open = false;
+  mostrarToast("Gasto salvo ✓");
+});
+
+/* ==================================================================
+   RECONHECIMENTO DE VOZ (Web Speech API)
+   Funciona em Chrome/Edge (desktop e Android) e Safari iOS 14.5+.
+   Requer HTTPS (ou localhost) e permissão de microfone — veja as
+   instruções de teste no final deste arquivo.
+   ================================================================== */
+const btnVoz = document.getElementById("btn-voz");
+const statusVoz = document.getElementById("status-voz");
+const iconeMic = document.getElementById("icone-mic");
+
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+let reconhecimento = null;
+let ouvindo = false;
+
+if (SpeechRecognitionAPI) {
+  reconhecimento = new SpeechRecognitionAPI();
+  reconhecimento.lang = "pt-BR";
+  reconhecimento.continuous = false;
+  reconhecimento.interimResults = false;
+  reconhecimento.maxAlternatives = 1;
+
+  reconhecimento.onstart = () => {
+    ouvindo = true;
+    btnVoz.classList.add("listening");
+    statusVoz.textContent = "Ouvindo... pode falar.";
+  };
+
+  reconhecimento.onerror = (evento) => {
+    ouvindo = false;
+    btnVoz.classList.remove("listening");
+    const mensagens = {
+      "not-allowed": "Permissão de microfone negada. Habilite nas configurações do navegador.",
+      "no-speech": "Não entendi nada. Tente novamente.",
+      "audio-capture": "Nenhum microfone encontrado.",
+    };
+    statusVoz.textContent = mensagens[evento.error] || "Erro ao gravar. Tente novamente.";
+  };
+
+  reconhecimento.onend = () => {
+    ouvindo = false;
+    btnVoz.classList.remove("listening");
+  };
+
+  reconhecimento.onresult = (evento) => {
+    const transcricao = evento.results[0][0].transcript;
+    statusVoz.textContent = `Você disse: "${transcricao}"`;
+    processarFraseDeVoz(transcricao);
+  };
+
+  btnVoz.addEventListener("click", () => {
+    if (ouvindo) {
+      reconhecimento.stop();
+      return;
+    }
+    try {
+      reconhecimento.start();
+    } catch (e) {
+      // Chamar start() duas vezes seguidas gera erro; ignoramos com segurança.
+      console.warn(e);
+    }
+  });
+} else {
+  // Navegador sem suporte à Web Speech API (ex.: Firefox desktop)
+  btnVoz.disabled = true;
+  btnVoz.classList.add("opacity-40");
+  statusVoz.textContent = "Seu navegador não suporta gravação por voz. Use o formulário manual abaixo.";
+}
+
+/**
+ * Interpreta frases no padrão "Descrição [Valor] [Categoria]", por
+ * exemplo: "Almoço 25 reais alimentação" ou "Uber 15 transporte".
+ *
+ * Estratégia:
+ *  1. Localiza o primeiro número na frase (com vírgula ou ponto decimal) → valor.
+ *  2. Tudo ANTES do número vira a descrição.
+ *  3. Tudo DEPOIS do número (removendo palavras como "reais"/"r$") vira a categoria,
+ *     que é comparada com a lista de categorias conhecidas.
+ */
+function processarFraseDeVoz(frase) {
+  const regex = /^(.*?)\s*(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais|real|r\$)?\s*(.*)$/i;
+  const match = frase.match(regex);
+
+  if (!match) {
+    statusVoz.textContent = `Não consegui identificar um valor em "${frase}". Ajuste manualmente abaixo.`;
+    document.getElementById("campo-descricao").value = frase;
+    document.getElementById("form-details").open = true;
+    return;
+  }
+
+  const descricao = capitalizar(match[1].trim() || "Gasto");
+  const valor = parseFloat(match[2].replace(",", "."));
+  const restoTexto = match[3].trim();
+
+  const categoriasConhecidas = [
+    "Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Compras", "Educação", "Outros",
+  ];
+  // Tenta casar o texto restante com uma categoria conhecida (ignorando acentos/maiúsculas)
+  const normalizar = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  let categoria = categoriasConhecidas.find((c) => normalizar(restoTexto).includes(normalizar(c)));
+  if (!categoria) categoria = restoTexto ? capitalizar(restoTexto) : "Outros";
+
+  // Preenche o formulário para revisão do usuário antes de salvar
+  document.getElementById("campo-descricao").value = descricao;
+  document.getElementById("campo-valor").value = isNaN(valor) ? "" : valor.toFixed(2);
+  document.getElementById("campo-data").value = hojeISO();
+
+  const selectCategoria = document.getElementById("campo-categoria");
+  const opcaoExiste = Array.from(selectCategoria.options).some((o) => o.value === categoria);
+  selectCategoria.value = opcaoExiste ? categoria : "Outros";
+
+  document.getElementById("form-details").open = true;
+  statusVoz.textContent = `Entendi: ${descricao} · ${formatarMoeda(valor || 0)} · ${categoria}. Confira e salve.`;
+}
+
+function capitalizar(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* ==================================================================
+   EXPORTAR CSV
+   Gera um arquivo .csv com ; como separador (compatível com o Excel
+   em português, que usa vírgula como separador decimal) e força o
+   download no navegador.
+   ================================================================== */
+document.getElementById("btn-exportar").addEventListener("click", () => {
+  if (gastos.length === 0) {
+    mostrarToast("Não há gastos para exportar.");
+    return;
+  }
+
+  const linhas = [["Data", "Descrição", "Valor", "Categoria"]];
+  gastos
+    .slice()
+    .sort((a, b) => (a.data > b.data ? 1 : -1))
+    .forEach((g) => {
+      linhas.push([
+        formatarDataExibicao(g.data),
+        g.descricao,
+        g.valor.toFixed(2).replace(".", ","),
+        g.categoria,
+      ]);
+    });
+
+  const csv = linhas
+    .map((linha) => linha.map((campo) => `"${String(campo).replace(/"/g, '""')}"`).join(";"))
+    .join("\r\n");
+
+  // BOM (\uFEFF) garante que o Excel reconheça acentuação em UTF-8 corretamente
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const agora = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `meus-gastos-${agora}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+});
+
+/* ==================================================================
+   LIMPAR DADOS (com confirmação)
+   ================================================================== */
+document.getElementById("btn-limpar").addEventListener("click", () => {
+  if (gastos.length === 0) {
+    mostrarToast("Não há dados para limpar.");
+    return;
+  }
+  const confirmado = confirm(
+    "Isso vai apagar TODOS os gastos salvos neste dispositivo. Essa ação não pode ser desfeita. Continuar?"
+  );
+  if (!confirmado) return;
+
+  gastos = [];
+  salvarGastos(gastos);
+  renderizar();
+  mostrarToast("Todos os dados foram apagados.");
+});
+
+/* ==================================================================
+   REGISTRO DO SERVICE WORKER (habilita instalação + modo offline)
+   ================================================================== */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch((err) => {
+      console.warn("Falha ao registrar o Service Worker:", err);
+    });
+  });
+}
+
+// Captura o evento de instalação para, opcionalmente, mostrar um aviso
+let promptInstalacao = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  promptInstalacao = e;
+  mostrarToast('Dica: use "Adicionar à Tela de Início" para instalar o app.');
+});
+
+/* ==================================================================
+   INICIALIZAÇÃO
+   ================================================================== */
+renderizar();
+</script>
+</body>
+</html>

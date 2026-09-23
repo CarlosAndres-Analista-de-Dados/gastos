@@ -297,6 +297,7 @@
         <div class="flex gap-1 bg-black/5 p-1 rounded-full text-xs">
           <button data-visao="lista" class="visao-btn px-3 py-1 rounded-full transition-colors tab-active">Lista</button>
           <button data-visao="grafico" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Por categoria</button>
+          <button data-visao="relatorio" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Relatório</button>
         </div>
       </div>
 
@@ -334,6 +335,52 @@
         <div id="estado-vazio-grafico" class="text-center py-10 hidden">
           <p class="text-3xl mb-2">📊</p>
           <p class="text-sm text-ink/40">Nenhuma despesa registrada neste período ainda.</p>
+        </div>
+      </div>
+
+      <!-- Visão: relatório comparativo (mensal/semanal) com dicas de economia -->
+      <div id="visao-relatorio" class="hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex gap-1.5 bg-black/5 p-1 rounded-full text-xs">
+            <button data-relatorio-tipo="mes" class="relatorio-tipo-btn px-3 py-1 rounded-full transition-colors tab-active">Mensal</button>
+            <button data-relatorio-tipo="semana" class="relatorio-tipo-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Semanal</button>
+          </div>
+        </div>
+        <p id="relatorio-periodo-label" class="text-[11px] text-ink/40 mb-4"></p>
+
+        <div id="relatorio-conteudo">
+          <div class="grid grid-cols-3 gap-2 mb-6">
+            <div class="bg-white rounded-xl border border-black/5 p-3">
+              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Saldo</p>
+              <p id="rel-saldo" class="font-display font-semibold text-sm mt-1"></p>
+              <p id="rel-saldo-delta" class="text-[11px] mt-0.5"></p>
+            </div>
+            <div class="bg-white rounded-xl border border-black/5 p-3">
+              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Receitas</p>
+              <p id="rel-receitas" class="font-display font-semibold text-sm mt-1 text-forest"></p>
+              <p id="rel-receitas-delta" class="text-[11px] mt-0.5"></p>
+            </div>
+            <div class="bg-white rounded-xl border border-black/5 p-3">
+              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Despesas</p>
+              <p id="rel-despesas" class="font-display font-semibold text-sm mt-1 text-coral"></p>
+              <p id="rel-despesas-delta" class="text-[11px] mt-0.5"></p>
+            </div>
+          </div>
+
+          <div class="mb-6">
+            <h3 class="text-sm font-medium mb-2.5">Despesas por categoria vs. período anterior</h3>
+            <div id="relatorio-categorias" class="space-y-3"></div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-medium mb-2.5">💡 Como melhorar no próximo período</h3>
+            <ul id="relatorio-dicas" class="space-y-2"></ul>
+          </div>
+        </div>
+
+        <div id="relatorio-vazio" class="text-center py-12 hidden">
+          <p class="text-3xl mb-2">📈</p>
+          <p class="text-sm text-ink/40">Ainda não há dados suficientes neste e/ou no período anterior para gerar um relatório.</p>
         </div>
       </div>
     </section>
@@ -678,6 +725,7 @@ function renderizar() {
 
   renderizarGrafico(filtrados.filter((g) => g.tipo === "despesa"));
   atualizarOrcamentoUI();
+  if (!visaoRelatorioEl.classList.contains("hidden")) renderizarRelatorio();
 }
 
 // Remoção de um item (delegação de evento)
@@ -748,10 +796,231 @@ function renderizarGrafico(despesasFiltradas) {
 }
 
 /* ==================================================================
+   RELATÓRIO COMPARATIVO (mensal / semanal)
+   Compara o período atual com o imediatamente anterior (mês contra
+   mês, ou semana contra semana) e gera algumas dicas automáticas
+   com base nos números — tudo calculado localmente, sem servidor.
+   ================================================================== */
+let relatorioTipo = "mes"; // 'mes' | 'semana'
+
+// Soma um número de dias/meses a uma data ISO e devolve nova data ISO.
+function somarDiasISO(iso, dias) {
+  const [a, m, d] = iso.split("-").map(Number);
+  const dt = new Date(a, m - 1, d + dias);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+// Intervalo [início, fim] do mês atual menos "offsetMeses" meses (0 = mês corrente).
+function intervaloMes(offsetMeses) {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = agora.getMonth() + 1 - offsetMeses;
+  const dt = new Date(ano, mes - 1, 1);
+  const anoAlvo = dt.getFullYear();
+  const mesAlvo = dt.getMonth() + 1;
+  const ultimoDia = new Date(anoAlvo, mesAlvo, 0).getDate();
+  const inicio = `${anoAlvo}-${String(mesAlvo).padStart(2, "0")}-01`;
+  const fim = `${anoAlvo}-${String(mesAlvo).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+  const nomesMes = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  return { inicio, fim, label: `${nomesMes[mesAlvo - 1]} de ${anoAlvo}`, diasNoPeriodo: ultimoDia };
+}
+
+// Intervalo [início, fim] da semana (segunda a domingo) atual menos "offsetSemanas".
+function intervaloSemana(offsetSemanas) {
+  const inicioSemanaAtual = inicioDaSemanaISO();
+  const inicio = somarDiasISO(inicioSemanaAtual, -7 * offsetSemanas);
+  const fim = somarDiasISO(inicio, 6);
+  return { inicio, fim, label: `${formatarDataExibicao(inicio)} a ${formatarDataExibicao(fim)}`, diasNoPeriodo: 7 };
+}
+
+function intervaloRelatorio(tipo, offset) {
+  return tipo === "semana" ? intervaloSemana(offset) : intervaloMes(offset);
+}
+
+// Resume receitas/despesas/categorias dentro de um intervalo [inicio, fim].
+function resumoIntervalo(inicio, fim) {
+  const itens = gastos.filter((g) => g.data >= inicio && g.data <= fim);
+  let despesas = 0, receitas = 0;
+  const porCategoria = {};
+  for (const g of itens) {
+    if (g.tipo === "receita") {
+      receitas += g.valor;
+    } else {
+      despesas += g.valor;
+      porCategoria[g.categoria] = (porCategoria[g.categoria] || 0) + g.valor;
+    }
+  }
+  return { despesas, receitas, porCategoria, qtd: itens.length };
+}
+
+// Retorna { texto, classe } descrevendo a variação percentual atual vs. anterior.
+// "boaSeSubir": true quando um aumento é positivo (ex.: receitas); false quando é negativo (ex.: despesas).
+function formatarVariacao(atual, anterior, boaSeSubir) {
+  if (anterior <= 0) {
+    if (atual <= 0) return { texto: "sem dados no período anterior", classe: "text-ink/40" };
+    return { texto: "novo em relação ao período anterior", classe: "text-ink/40" };
+  }
+  const percentual = ((atual - anterior) / anterior) * 100;
+  const seta = percentual > 0.5 ? "▲" : percentual < -0.5 ? "▼" : "→";
+  const subiu = percentual > 0.5;
+  const desceu = percentual < -0.5;
+  let classe = "text-ink/40";
+  if (subiu) classe = boaSeSubir ? "text-forest" : "text-coral";
+  else if (desceu) classe = boaSeSubir ? "text-coral" : "text-forest";
+  return { texto: `${seta} ${Math.abs(percentual).toFixed(0)}% vs. período anterior`, classe };
+}
+
+const relSaldoEl = document.getElementById("rel-saldo");
+const relSaldoDeltaEl = document.getElementById("rel-saldo-delta");
+const relReceitasEl = document.getElementById("rel-receitas");
+const relReceitasDeltaEl = document.getElementById("rel-receitas-delta");
+const relDespesasEl = document.getElementById("rel-despesas");
+const relDespesasDeltaEl = document.getElementById("rel-despesas-delta");
+const relatorioPeriodoLabelEl = document.getElementById("relatorio-periodo-label");
+const relatorioCategoriasEl = document.getElementById("relatorio-categorias");
+const relatorioDicasEl = document.getElementById("relatorio-dicas");
+const relatorioConteudoEl = document.getElementById("relatorio-conteudo");
+const relatorioVazioEl = document.getElementById("relatorio-vazio");
+
+function renderizarRelatorio() {
+  const atualRange = intervaloRelatorio(relatorioTipo, 0);
+  const anteriorRange = intervaloRelatorio(relatorioTipo, 1);
+  const atual = resumoIntervalo(atualRange.inicio, atualRange.fim);
+  const anterior = resumoIntervalo(anteriorRange.inicio, anteriorRange.fim);
+
+  relatorioPeriodoLabelEl.textContent =
+    relatorioTipo === "mes"
+      ? `Comparando ${atualRange.label} com ${anteriorRange.label}`
+      : `Comparando ${atualRange.label} com a semana anterior`;
+
+  const semDadosSuficientes = atual.qtd === 0 && anterior.qtd === 0;
+  relatorioConteudoEl.classList.toggle("hidden", semDadosSuficientes);
+  relatorioVazioEl.classList.toggle("hidden", !semDadosSuficientes);
+  if (semDadosSuficientes) return;
+
+  // --- Cartões de totais ---
+  const saldoAtual = atual.receitas - atual.despesas;
+  const saldoAnterior = anterior.receitas - anterior.despesas;
+  relSaldoEl.textContent = formatarMoeda(saldoAtual);
+  relSaldoEl.classList.toggle("text-coral", saldoAtual < 0);
+  const varSaldo = formatarVariacao(saldoAtual, saldoAnterior, true);
+  relSaldoDeltaEl.textContent = varSaldo.texto;
+  relSaldoDeltaEl.className = "text-[11px] mt-0.5 " + varSaldo.classe;
+
+  relReceitasEl.textContent = formatarMoeda(atual.receitas);
+  const varReceitas = formatarVariacao(atual.receitas, anterior.receitas, true);
+  relReceitasDeltaEl.textContent = varReceitas.texto;
+  relReceitasDeltaEl.className = "text-[11px] mt-0.5 " + varReceitas.classe;
+
+  relDespesasEl.textContent = formatarMoeda(atual.despesas);
+  const varDespesas = formatarVariacao(atual.despesas, anterior.despesas, false);
+  relDespesasDeltaEl.textContent = varDespesas.texto;
+  relDespesasDeltaEl.className = "text-[11px] mt-0.5 " + varDespesas.classe;
+
+  // --- Comparação por categoria (maiores variações primeiro) ---
+  const categorias = new Set([...Object.keys(atual.porCategoria), ...Object.keys(anterior.porCategoria)]);
+  const linhasCategoria = [...categorias].map((cat) => {
+    const valorAtual = atual.porCategoria[cat] || 0;
+    const valorAnterior = anterior.porCategoria[cat] || 0;
+    return { cat, valorAtual, valorAnterior, delta: valorAtual - valorAnterior };
+  });
+  linhasCategoria.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  relatorioCategoriasEl.innerHTML = "";
+  if (linhasCategoria.length === 0) {
+    relatorioCategoriasEl.innerHTML = `<p class="text-sm text-ink/40">Nenhuma despesa em nenhum dos dois períodos.</p>`;
+  }
+  for (const l of linhasCategoria.slice(0, 6)) {
+    const cor = CORES_CATEGORIA[l.cat] || "#94A3B8";
+    const var_ = formatarVariacao(l.valorAtual, l.valorAnterior, false);
+    const div = document.createElement("div");
+    div.className = "flex items-center justify-between text-sm gap-2";
+    div.innerHTML = `
+      <span class="flex items-center gap-2 min-w-0">
+        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${cor}"></span>
+        <span class="truncate">${ICONES_CATEGORIA[l.cat] ?? "📎"} ${l.cat}</span>
+      </span>
+      <span class="text-right shrink-0">
+        <span class="block font-medium">${formatarMoeda(l.valorAtual)}</span>
+        <span class="block text-[11px] ${var_.classe}">${var_.texto}</span>
+      </span>`;
+    relatorioCategoriasEl.appendChild(div);
+  }
+
+  // --- Dicas automáticas para o próximo período ---
+  const dicas = [];
+  const nomePerido = relatorioTipo === "mes" ? "mês" : "semana";
+
+  if (anterior.despesas > 0) {
+    const pct = ((atual.despesas - anterior.despesas) / anterior.despesas) * 100;
+    if (pct > 10) {
+      dicas.push(`Suas despesas subiram ${pct.toFixed(0)}% em relação ao ${nomePerido} anterior. Vale revisar o que mudou antes que isso vire rotina.`);
+    } else if (pct < -10) {
+      dicas.push(`Você reduziu as despesas em ${Math.abs(pct).toFixed(0)}% em relação ao ${nomePerido} anterior — bom sinal! Tente manter esse padrão.`);
+    }
+  }
+
+  const maiorAumento = linhasCategoria.filter((l) => l.delta > 0 && l.valorAnterior > 0).sort((a, b) => b.delta - a.delta)[0];
+  if (maiorAumento) {
+    const pctCat = (maiorAumento.delta / maiorAumento.valorAnterior) * 100;
+    dicas.push(`"${maiorAumento.cat}" foi a categoria que mais cresceu (+${formatarMoeda(maiorAumento.delta)}, ${pctCat.toFixed(0)}%). Definir um limite específico para ela pode ajudar no próximo ${nomePerido}.`);
+  }
+
+  const novaCategoriaCara = linhasCategoria.filter((l) => l.valorAnterior === 0 && l.valorAtual > 0).sort((a, b) => b.valorAtual - a.valorAtual)[0];
+  if (novaCategoriaCara && !maiorAumento) {
+    dicas.push(`"${novaCategoriaCara.cat}" é um gasto novo neste ${nomePerido} (${formatarMoeda(novaCategoriaCara.valorAtual)}). Vale avaliar se ele deve se repetir todo período.`);
+  }
+
+  const orcamento = obterOrcamento();
+  if (relatorioTipo === "mes") {
+    if (orcamento > 0) {
+      const hoje = new Date();
+      const diasPassados = hoje.getDate();
+      const diasNoMes = atualRange.diasNoPeriodo;
+      const mediaDiaria = atual.despesas / Math.max(1, diasPassados);
+      const projecao = mediaDiaria * diasNoMes;
+      if (projecao > orcamento) {
+        const diasRestantes = diasNoMes - diasPassados;
+        const restante = Math.max(0, orcamento - atual.despesas);
+        const limiteDiario = diasRestantes > 0 ? restante / diasRestantes : 0;
+        dicas.push(`No ritmo atual (média de ${formatarMoeda(mediaDiaria)}/dia), a projeção para o mês é de ${formatarMoeda(projecao)} — acima do orçamento de ${formatarMoeda(orcamento)}. Para fechar dentro do orçamento, tente gastar no máximo ${formatarMoeda(limiteDiario)} por dia até o fim do mês.`);
+      } else {
+        dicas.push(`No ritmo atual, você deve fechar o mês em torno de ${formatarMoeda(projecao)}, dentro do orçamento de ${formatarMoeda(orcamento)}. Continue assim.`);
+      }
+    } else if (atual.despesas > 0 || anterior.despesas > 0) {
+      const sugestao = Math.max(atual.despesas, anterior.despesas) * 0.9;
+      dicas.push(`Você ainda não definiu um orçamento mensal. Com base nos últimos meses, um teto de ${formatarMoeda(sugestao)} (cerca de 10% abaixo do seu gasto recente) é um bom ponto de partida.`);
+    }
+  }
+
+  if (dicas.length === 0) {
+    dicas.push(`Seus números estão estáveis em relação ao ${nomePerido} anterior. Continue registrando os gastos para identificar padrões com mais precisão.`);
+  }
+
+  relatorioDicasEl.innerHTML = "";
+  for (const dica of dicas) {
+    const li = document.createElement("li");
+    li.className = "flex gap-2 text-sm text-ink/70 bg-white rounded-xl border border-black/5 px-3.5 py-3";
+    li.innerHTML = `<span class="shrink-0">•</span><span>${escapeHTML(dica)}</span>`;
+    relatorioDicasEl.appendChild(li);
+  }
+}
+
+document.querySelectorAll(".relatorio-tipo-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    relatorioTipo = btn.dataset.relatorioTipo;
+    document.querySelectorAll(".relatorio-tipo-btn").forEach((b) => b.classList.remove("tab-active"));
+    btn.classList.add("tab-active");
+    renderizarRelatorio();
+  });
+});
+
+/* ==================================================================
    ABAS: LISTA x GRÁFICO POR CATEGORIA
    ================================================================== */
 const visaoListaEl = document.getElementById("visao-lista");
 const visaoGraficoEl = document.getElementById("visao-grafico");
+const visaoRelatorioEl = document.getElementById("visao-relatorio");
 
 document.querySelectorAll(".visao-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -760,6 +1029,8 @@ document.querySelectorAll(".visao-btn").forEach((btn) => {
     const visao = btn.dataset.visao;
     visaoListaEl.classList.toggle("hidden", visao !== "lista");
     visaoGraficoEl.classList.toggle("hidden", visao !== "grafico");
+    visaoRelatorioEl.classList.toggle("hidden", visao !== "relatorio");
+    if (visao === "relatorio") renderizarRelatorio();
   });
 });
 

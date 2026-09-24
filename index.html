@@ -385,6 +385,8 @@
             <h3 class="text-sm font-medium mb-2.5">💡 Como melhorar no próximo período</h3>
             <ul id="relatorio-dicas" class="space-y-2"></ul>
           </div>
+
+          <div id="analise-profunda" class="mt-8 space-y-4"></div>
         </div>
 
         <div id="relatorio-vazio" class="text-center py-12 hidden">
@@ -1080,6 +1082,139 @@ function renderizarRelatorio() {
     li.innerHTML = `<span class="shrink-0">•</span><span>${escapeHTML(dica)}</span>`;
     relatorioDicasEl.appendChild(li);
   }
+  renderizarAnalise();
+}
+
+
+/* ==================================================================
+   ANÁLISE APROFUNDADA (aba Relatório > Mensal)
+   Diagnóstico, tendência de 6 meses, metas por categoria, padrões de
+   comportamento, regra 50/30/20 e plano para o próximo mês.
+   ================================================================== */
+const ESSENCIAIS = ["Moradia", "Saúde", "Alimentação", "Transporte", "Educação"];
+const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const pctDe = (a, b) => (b > 0 ? (a / b) * 100 : 0);
+const cartaoAnalise = (titulo, sub, corpo) =>
+  `<div class="bg-white rounded-2xl border border-black/5 p-4"><h3 class="font-display text-base font-medium">${titulo}</h3><p class="text-xs text-ink/60 mb-3">${sub}</p>${corpo}</div>`;
+const barraAnalise = (pct, cor) =>
+  `<div class="h-2 bg-black/5 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:${Math.min(100, pct)}%;background:${cor}"></div></div>`;
+const kpiAnalise = (rot, val, nota) =>
+  `<div class="bg-paper rounded-xl p-3"><p class="text-xs text-ink/60">${rot}</p><p class="font-display font-semibold text-lg">${val}</p><p class="text-xs text-ink/60">${nota}</p></div>`;
+const colunasBarras = (itens, max, destaque) =>
+  `<div class="flex gap-1">` + itens.map((it, i) =>
+    `<div class="flex-1 flex flex-col items-center gap-1"><div class="h-20 w-full flex items-end justify-center"><div class="w-full max-w-[1.75rem] rounded-t" style="height:${Math.max(3, pctDe(it.v, max))}%;background:${i === destaque ? "#C4573D" : "#2F6F5E99"}"></div></div><span class="text-xs text-ink/60">${it.r}</span></div>`).join("") + `</div>`;
+
+function renderizarAnalise() {
+  const el = document.getElementById("analise-profunda");
+  if (relatorioTipo !== "mes") { el.innerHTML = ""; return; }
+
+  const diaHoje = Number(hojeISO().slice(8));
+  const meses = [5, 4, 3, 2, 1, 0].map((o) => { const r = intervaloMes(o); return { ...r, ...resumoIntervalo(r.inicio, r.fim) }; });
+  const atual = meses[5];
+  const hist = meses.slice(2, 5).filter((m) => m.despesas > 0);
+  const mediaHist = hist.length ? hist.reduce((t, m) => t + m.despesas, 0) / hist.length : 0;
+  const janela = gastos.filter((g) => g.tipo !== "receita" && g.data >= meses[2].inicio && g.data <= atual.fim);
+  const doMes = janela.filter((g) => g.data >= atual.inicio);
+  const nDias = atual.diasNoPeriodo;
+  const mediaDia = atual.despesas / diaHoje;
+  const projecao = mediaDia * nDias;
+  const poupanca = atual.receitas > 0 ? ((atual.receitas - atual.despesas) / atual.receitas) * 100 : null;
+  const ticket = doMes.length ? atual.despesas / doMes.length : 0;
+  const nomeMes = (m) => capitalizar(m.label.split(" ")[0]);
+
+  // 1) Diagnóstico
+  const diagnostico = cartaoAnalise("Diagnóstico do mês", "Onde você está agora",
+    `<div class="grid grid-cols-2 gap-2">` +
+    kpiAnalise("Taxa de poupança", poupanca === null ? "—" : poupanca.toFixed(0) + "%", "saudável: 20% ou mais") +
+    kpiAnalise("Gasto médio por dia", formatarMoeda(mediaDia), `${diaHoje} dias contados`) +
+    kpiAnalise("Projeção do mês", formatarMoeda(projecao), (mediaHist ? `${projecao > mediaHist ? "acima" : "abaixo"} da média de ${formatarMoeda(mediaHist)}` : "sem histórico") + (diaHoje < 7 ? " (início do mês, pouco confiável)" : "")) +
+    kpiAnalise("Despesa média", formatarMoeda(ticket), `${doMes.length} lançamentos`) + `</div>`);
+
+  // 2) Tendência de 6 meses
+  const maxV = Math.max(1, ...meses.map((m) => m.despesas));
+  let tend = "Histórico insuficiente para identificar tendência.";
+  if (hist.length >= 2) {
+    const v = pctDe(hist[hist.length - 1].despesas - hist[0].despesas, hist[0].despesas);
+    tend = Math.abs(v) < 5 ? "Suas despesas estão estáveis nos últimos meses." : `Suas despesas ${v > 0 ? "subiram" : "caíram"} ${Math.abs(v).toFixed(0)}% entre ${nomeMes(hist[0])} e ${nomeMes(hist[hist.length - 1])}.`;
+  }
+  const tendencia = cartaoAnalise("Tendência de despesas", "Últimos 6 meses (mês atual em vermelho)",
+    colunasBarras(meses.map((m) => ({ v: m.despesas, r: nomeMes(m).slice(0, 3) })), maxV, 5) + `<p class="text-sm mt-3">${tend}</p>`);
+
+  // 3) Categorias: projeção, média histórica e meta
+  const cats = [...new Set([...Object.keys(atual.porCategoria), ...hist.flatMap((m) => Object.keys(m.porCategoria))])];
+  const linhas = cats.map((c) => {
+    const v = atual.porCategoria[c] || 0;
+    const proj = (v / diaHoje) * nDias;
+    const media = hist.length ? hist.reduce((t, m) => t + (m.porCategoria[c] || 0), 0) / hist.length : 0;
+    const base = v > 0 && media > 0 ? Math.min(proj, media) : (proj || media);
+    const meta = base * (ESSENCIAIS.includes(c) ? 1 : 0.95);
+    return { c, proj, media, meta, economia: Math.max(0, proj - meta) };
+  }).sort((a, b) => b.proj - a.proj);
+  const totalProjCat = linhas.reduce((t, l) => t + l.proj, 0);
+  const categorias = cartaoAnalise("Categorias e metas", "Projeção do mês, média dos 3 meses anteriores e meta sugerida",
+    linhas.length ? `<div class="space-y-3.5">` + linhas.map((l) => {
+      const acima = l.media > 0 && l.proj > l.media * 1.15 ? ` · <span class="text-coral font-medium">${pctDe(l.proj - l.media, l.media).toFixed(0)}% acima da média</span>` : "";
+      return `<div><div class="flex justify-between text-sm"><span>${ICONES_CATEGORIA[l.c] ?? "📎"} ${escapeHTML(l.c)} <span class="text-xs text-ink/60">${pctDe(l.proj, totalProjCat).toFixed(0)}%</span></span><span class="font-medium">${formatarMoeda(l.proj)}</span></div>${barraAnalise(pctDe(l.proj, totalProjCat), CORES_CATEGORIA[l.c] || "#94A3B8")}<p class="text-xs text-ink/60 mt-1">média ${formatarMoeda(l.media)} · meta ${formatarMoeda(l.meta)}${acima}</p></div>`;
+    }).join("") + `</div>` : `<p class="text-sm text-ink/60">Sem despesas registradas.</p>`);
+
+  // 4) Padrões de comportamento
+  const porDia = Array(7).fill(0);
+  for (const g of janela) { const [a, m, d] = g.data.split("-").map(Number); porDia[new Date(a, m - 1, d).getDay()] += g.valor; }
+  const totJan = porDia.reduce((t, v) => t + v, 0);
+  const diaPico = porDia.indexOf(Math.max(...porDia));
+  const primeiraQuinzena = pctDe(janela.filter((g) => Number(g.data.slice(8)) <= 15).reduce((t, g) => t + g.valor, 0), totJan);
+  const pequenos = doMes.filter((g) => g.valor < 30);
+  const totPequenos = pequenos.reduce((t, g) => t + g.valor, 0);
+  const grupos = {};
+  for (const g of janela) { const k = g.descricao.trim().toLowerCase(); const x = (grupos[k] ||= { nome: g.descricao.trim(), n: 0, total: 0 }); x.n++; x.total += g.valor; }
+  const recorrentes = Object.values(grupos).filter((x) => x.n >= 3).sort((a, b) => b.total - a.total).slice(0, 4);
+  const maiores = [...doMes].sort((a, b) => b.valor - a.valor).slice(0, 3);
+  const item = (t) => `<li class="text-sm">${t}</li>`;
+  const padroes = cartaoAnalise("Padrões de comportamento", "Baseado nos últimos 3 meses e no mês atual",
+    (totJan > 0 ? colunasBarras(DIAS_SEMANA.map((r, i) => ({ v: porDia[i], r })), Math.max(1, ...porDia), diaPico) : "") +
+    `<ul class="space-y-2 mt-3">` +
+    (totJan > 0 ? item(`📅 Seu dia mais caro é <strong>${DIAS_SEMANA[diaPico]}</strong> (${pctDe(porDia[diaPico], totJan).toFixed(0)}% do total). Fins de semana somam ${pctDe(porDia[0] + porDia[6], totJan).toFixed(0)}%.`) : "") +
+    (totJan > 0 ? item(`🗓️ ${primeiraQuinzena.toFixed(0)}% dos gastos ocorrem na 1ª quinzena${primeiraQuinzena > 60 ? ", o que indica gastos concentrados logo após o recebimento" : ""}.`) : "") +
+    (pequenos.length >= 3 ? item(`☕ ${pequenos.length} gastos abaixo de R$ 30 somam ${formatarMoeda(totPequenos)} (${pctDe(totPequenos, atual.despesas).toFixed(0)}% do mês). Pequenos gastos passam despercebidos, mas se acumulam.`) : "") +
+    recorrentes.map((x) => item(`🔁 "${escapeHTML(x.nome)}" apareceu ${x.n} vezes (${formatarMoeda(x.total)}). Cortar metade renderia ${formatarMoeda(x.total / 2)}.`)).join("") +
+    (maiores.length ? item(`💸 Maiores despesas do mês: ` + maiores.map((g) => `${escapeHTML(g.descricao)} (${formatarMoeda(g.valor)})`).join(", ") + `. Juntas, ${pctDe(maiores.reduce((t, g) => t + g.valor, 0), atual.despesas).toFixed(0)}% das despesas.`) : "") +
+    `</ul>`);
+
+  // 5) Regra 50/30/20
+  const baseRenda = atual.receitas;
+  const ess = Object.entries(atual.porCategoria).filter(([c]) => ESSENCIAIS.includes(c)).reduce((t, [, v]) => t + v, 0);
+  const linha5030 = (rot, valor, meta, cor) =>
+    `<div><div class="flex justify-between text-sm"><span>${rot}</span><span>${pctDe(valor, baseRenda).toFixed(0)}% <span class="text-xs text-ink/60">(meta ${meta}%)</span></span></div>${barraAnalise(pctDe(valor, baseRenda), cor)}</div>`;
+  const regra = cartaoAnalise("Regra 50/30/20", "Essenciais, desejos e poupança em relação à sua renda do mês",
+    baseRenda > 0
+      ? `<div class="space-y-3">${linha5030("Essenciais (moradia, saúde, alimentação, transporte, educação)", ess, 50, "#2F6F5E")}${linha5030("Desejos (lazer, compras, outros)", atual.despesas - ess, 30, "#E8A33D")}${linha5030("Poupança", Math.max(0, baseRenda - atual.despesas), 20, "#3B82F6")}</div>`
+      : `<p class="text-sm text-ink/60">Registre suas receitas do mês para comparar com a regra 50/30/20.</p>`);
+
+  // 6) Plano para o próximo mês
+  const tetoSug = linhas.reduce((t, l) => t + l.meta, 0);
+  const economiaTot = linhas.reduce((t, l) => t + l.economia, 0);
+  const diasProx = intervaloMes(-1).diasNoPeriodo;
+  const rendas = [...hist.map((m) => m.receitas), atual.receitas].filter((v) => v > 0);
+  const rendaRef = rendas.length ? rendas.reduce((t, v) => t + v, 0) / rendas.length : 0;
+  const acoes = linhas.filter((l) => l.economia > 0).sort((a, b) => b.economia - a.economia).slice(0, 4)
+    .map((l) => item(`✅ ${escapeHTML(l.c)}: leve de ${formatarMoeda(l.proj)} para ${formatarMoeda(l.meta)} (economia de ${formatarMoeda(l.economia)}).`)).join("");
+  let leituraRenda = "";
+  if (rendaRef > 0) {
+    const teto20 = rendaRef * 0.8;
+    leituraRenda = item(tetoSug > teto20
+      ? `🎯 Para poupar 20% da renda média (${formatarMoeda(rendaRef)}), o teto seria ${formatarMoeda(teto20)}. A meta sugerida ainda fica ${formatarMoeda(tetoSug - teto20)} acima, então priorize os cortes acima.`
+      : `🎯 Com essa meta você pouparia cerca de ${pctDe(rendaRef - tetoSug, rendaRef).toFixed(0)}% da renda média (${formatarMoeda(rendaRef)}).`);
+  }
+  const plano = cartaoAnalise("Plano para o próximo mês", "Metas calculadas a partir do seu histórico",
+    `<div class="grid grid-cols-3 gap-2">` +
+    kpiAnalise("Teto sugerido", formatarMoeda(tetoSug), "no mês") +
+    kpiAnalise("Por dia", formatarMoeda(tetoSug / diasProx), `${diasProx} dias`) +
+    kpiAnalise("Economia", formatarMoeda(economiaTot), "possível") + `</div>` +
+    `<ul class="space-y-2 mt-3">${acoes || item("Nenhum corte necessário: seus gastos já estão em linha com o histórico.")}${leituraRenda}` +
+    (typeof orcamento === "number" && orcamento > 0 ? item(`💼 Seu orçamento atual é ${formatarMoeda(orcamento)}; o teto sugerido é ${formatarMoeda(tetoSug)}.`) : "") + `</ul>`);
+
+  const aviso = janela.length < 10 ? `<p class="text-xs text-ink/60 bg-gold/15 rounded-xl px-3 py-2">Poucos registros até agora. A análise fica mais precisa com 2 ou mais meses de histórico.</p>` : "";
+  el.innerHTML = `<h2 class="font-display text-xl font-semibold">Análise aprofundada</h2>${aviso}${diagnostico}${tendencia}${categorias}${padroes}${regra}${plano}`;
 }
 
 document.querySelectorAll(".relatorio-tipo-btn").forEach((btn) => {

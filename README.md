@@ -11,7 +11,7 @@ App web para controlar gastos e receitas pessoais. Funciona no navegador do celu
 - **Três visões dos registros:**
   - **Lista:** agrupada por dia (Hoje, Ontem, data por extenso).
   - **Por categoria:** gráfico de rosca com as despesas do período.
-  - **Relatório:** compara o mês (ou a semana) atual com o anterior e gera dicas automáticas. No modo Mensal, inclui uma **análise aprofundada**: diagnóstico (taxa de poupança, média diária, projeção), tendência de 6 meses, metas por categoria, padrões de comportamento (dia da semana, quinzena, pequenos gastos, gastos recorrentes, maiores despesas), regra 50/30/20 e um plano com teto sugerido para o mês seguinte.
+  - **Relatório:** compara o mês (ou a semana) atual com o anterior e gera dicas automáticas. Nos modos Mensal e Semanal, inclui uma **análise aprofundada**: diagnóstico (taxa de poupança, média diária, projeção), tendência de 6 meses, metas por categoria, padrões de comportamento (dia da semana, quinzena, pequenos gastos, gastos recorrentes, maiores despesas), regra 50/30/20 e um plano com teto sugerido para o mês seguinte.
 - **Categorias personalizadas:** crie categorias com emoji e cor, separadas para despesas e receitas.
 - **Desfazer:** ao remover um registro, o aviso oferece a opção "Desfazer".
 - **Exportar e fazer backup:** exportação em CSV e backup completo em JSON.
@@ -125,7 +125,7 @@ Paleta:
 O Service Worker responde primeiro com o cache e atualiza em segundo plano. Depois de alterar qualquer arquivo, aumente o número da versão em `sw.js`:
 
 ```js
-const CACHE_NAME = "meus-gastos-cache-v6"; // troque para v6, v7...
+const CACHE_NAME = "meus-gastos-cache-v7"; // troque para v6, v7...
 ```
 
 Quem já instalou o app recebe a nova versão ao abri-lo, e pode ser preciso abrir duas vezes para ver a mudança. Se renomear ou adicionar arquivos, atualize também a lista `APP_SHELL` no mesmo arquivo.

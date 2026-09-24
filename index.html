@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Meus Gastos — Controle Financeiro</title>
 <meta name="description" content="Controle de gastos e receitas pessoais com registro por voz, orçamento mensal e funcionamento offline." />
 
@@ -51,10 +51,12 @@
   html, body { background: #FAF8F5; }
   body { -webkit-tap-highlight-color: transparent; }
 
-  :root {
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
+  :root { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid #2F6F5E; outline-offset: 2px; }
+  header :focus-visible { outline-color: #FAF8F5; }
+  .btn-sec { display:flex; align-items:center; justify-content:center; border:1px solid rgba(31,42,36,.15);
+             background:#fff; border-radius:.875rem; padding:.75rem; font-size:.875rem; font-weight:500; }
+  .btn-sec:active { background:rgba(0,0,0,.05); }
 
   @keyframes pulse-ring {
     0%   { box-shadow: 0 0 0 0 rgba(196, 87, 61, 0.45); }
@@ -97,77 +99,82 @@
        Saldo do período, receitas x despesas, orçamento mensal e
        seletor de período (incluindo intervalo personalizado).
        ============================================================ -->
-  <header class="sticky top-0 z-20 bg-paper/90 backdrop-blur border-b border-black/5">
-    <div class="max-w-md mx-auto px-5 pt-5 pb-4">
-      <div class="flex items-baseline justify-between">
-        <h1 class="font-display text-2xl font-semibold tracking-tight">Meus Gastos</h1>
-        <span id="periodo-label" class="text-xs text-ink/50">este mês</span>
+  <header class="bg-forest text-paper rounded-b-[2rem]" style="padding-top:env(safe-area-inset-top,0px)">
+    <div class="max-w-md mx-auto px-5 pt-5 pb-6">
+      <div class="flex items-center justify-between">
+        <h1 class="font-display text-lg font-semibold">Meus Gastos</h1>
+        <span id="periodo-label" class="text-sm text-paper/75">este mês</span>
       </div>
 
-      <p id="total-periodo" class="font-display text-4xl font-semibold mt-1">R$ 0,00</p>
+      <p class="text-sm text-paper/75 mt-7">Saldo</p>
+      <p id="total-periodo" class="font-display text-5xl font-semibold tracking-tight">R$ 0,00</p>
 
-      <div class="flex gap-4 mt-1 text-xs font-medium">
-        <span class="text-forest">↑ <span id="total-receitas">R$ 0,00</span></span>
-        <span class="text-coral">↓ <span id="total-despesas">R$ 0,00</span></span>
+      <div class="grid grid-cols-2 gap-2 mt-4">
+        <div class="bg-white/10 rounded-2xl px-3.5 py-2.5">
+          <p class="text-xs text-paper/75">Receitas</p>
+          <p id="total-receitas" class="font-semibold text-[#A8E6CF]">R$ 0,00</p>
+        </div>
+        <div class="bg-white/10 rounded-2xl px-3.5 py-2.5">
+          <p class="text-xs text-paper/75">Despesas</p>
+          <p id="total-despesas" class="font-semibold text-[#FFB9A3]">R$ 0,00</p>
+        </div>
       </div>
 
-      <!-- Orçamento mensal: barra de progresso + link para definir/editar -->
-      <div id="orcamento-bloco" class="hidden mt-3">
-        <div class="flex justify-between text-[11px] text-ink/50 mb-1">
+      <div id="orcamento-bloco" class="hidden mt-5">
+        <div class="flex justify-between text-xs text-paper/75 mb-1.5">
           <span>Orçamento do mês</span>
           <span id="orcamento-texto"></span>
         </div>
-        <div class="h-1.5 bg-black/5 rounded-full overflow-hidden">
+        <div class="h-2 bg-white/15 rounded-full overflow-hidden">
           <div id="orcamento-barra" class="h-full rounded-full transition-all duration-500"></div>
         </div>
       </div>
-      <button id="btn-orcamento" type="button" class="text-[11px] text-ink/40 underline mt-2">
+      <button id="btn-orcamento" type="button" class="text-xs text-paper/75 underline underline-offset-2 mt-3 py-1">
         Definir orçamento mensal
       </button>
       <div id="orcamento-form" class="hidden gap-2 mt-2">
         <input id="input-orcamento" type="number" step="0.01" min="0" placeholder="0,00"
-               class="flex-1 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm
-                      focus:outline-none focus:ring-2 focus:ring-forest/40" />
+               class="flex-1 min-w-0 rounded-xl border-0 bg-white text-ink px-3.5 py-2 text-base
+                      focus:outline-none focus:ring-2 focus:ring-gold" />
         <button id="btn-salvar-orcamento" type="button"
-                class="bg-forest text-paper text-xs font-medium px-3 rounded-lg active:opacity-80 transition-opacity">Salvar</button>
-      </div>
-
-      <!-- Abas de período -->
-      <div class="flex gap-1.5 mt-4 bg-black/5 p-1 rounded-full text-sm overflow-x-auto no-scrollbar">
-        <button data-periodo="hoje" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Hoje</button>
-        <button data-periodo="semana" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Semana</button>
-        <button data-periodo="mes" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap tab-active">Mês</button>
-        <button data-periodo="todos" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Tudo</button>
-        <button data-periodo="personalizado" class="periodo-btn shrink-0 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Personalizado</button>
-      </div>
-
-      <!-- Intervalo de datas, visível apenas quando "Personalizado" está ativo -->
-      <div id="periodo-custom" class="hidden grid grid-cols-2 gap-2 mt-2">
-        <input type="date" id="custom-de" aria-label="De"
-               class="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-forest/40" />
-        <input type="date" id="custom-ate" aria-label="Até"
-               class="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-forest/40" />
+                class="bg-paper text-forest text-sm font-semibold px-4 rounded-xl active:opacity-80 transition-opacity">Salvar</button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-md mx-auto px-5 pb-28 pt-6 space-y-8">
+  <div class="sticky z-20 bg-paper/90 backdrop-blur" style="top:env(safe-area-inset-top,0px)">
+    <div class="max-w-md mx-auto px-5 py-3">
+      <div class="flex gap-1 bg-black/5 p-1 rounded-full text-sm overflow-x-auto no-scrollbar">
+        <button data-periodo="hoje" class="periodo-btn shrink-0 px-3.5 py-2 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Hoje</button>
+        <button data-periodo="semana" class="periodo-btn shrink-0 px-3.5 py-2 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Semana</button>
+        <button data-periodo="mes" class="periodo-btn shrink-0 px-3.5 py-2 rounded-full transition-colors whitespace-nowrap tab-active">Mês</button>
+        <button data-periodo="todos" class="periodo-btn shrink-0 px-3.5 py-2 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Tudo</button>
+        <button data-periodo="personalizado" class="periodo-btn shrink-0 px-3.5 py-2 rounded-full transition-colors whitespace-nowrap hover:bg-black/5">Personalizado</button>
+      </div>
+      <div id="periodo-custom" class="hidden grid grid-cols-2 gap-2 mt-2">
+        <input type="date" id="custom-de" aria-label="De"
+               class="rounded-xl border border-black/10 bg-white px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-forest/40" />
+        <input type="date" id="custom-ate" aria-label="Até"
+               class="rounded-xl border border-black/10 bg-white px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-forest/40" />
+      </div>
+    </div>
+  </div>
+
+  <main class="max-w-md mx-auto px-5 pb-28 pt-3 space-y-6">
 
     <!-- ============================================================
          BOTÃO DE GRAVAÇÃO POR VOZ
          ============================================================ -->
-    <section class="flex flex-col items-center text-center gap-3">
-      <button id="btn-voz"
-        class="relative w-28 h-28 rounded-full bg-coral text-paper flex items-center justify-center
-               shadow-lg shadow-coral/30 hover:shadow-xl hover:shadow-coral/40 active:scale-95
-               transition-[transform,box-shadow] overflow-hidden">
+    <section class="flex items-center gap-4 bg-white rounded-3xl border border-black/5 p-4 shadow-sm shadow-black/[0.03]">
+      <button id="btn-voz" aria-label="Registrar por voz"
+        class="relative shrink-0 w-16 h-16 rounded-full bg-coral text-paper flex items-center justify-center
+               shadow-md shadow-coral/30 active:scale-95 transition-[transform,box-shadow]">
         <svg id="icone-mic" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="1.8" class="w-10 h-10">
+             stroke="currentColor" stroke-width="1.8" class="w-7 h-7">
           <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/>
           <path d="M19 11a7 7 0 0 1-14 0M12 18v3"/>
         </svg>
-        <!-- Onda sonora, exibida no lugar do ícone enquanto o app ouve -->
-        <div id="onda-voz" class="hidden absolute inset-0 flex items-center justify-center gap-1.5">
+        <div id="onda-voz" class="hidden absolute inset-0 flex items-center justify-center gap-1">
           <span class="onda-barra" style="animation-delay:0ms"></span>
           <span class="onda-barra" style="animation-delay:150ms"></span>
           <span class="onda-barra" style="animation-delay:300ms"></span>
@@ -175,7 +182,7 @@
           <span class="onda-barra" style="animation-delay:0ms"></span>
         </div>
       </button>
-      <p id="status-voz" class="text-sm text-ink/60 max-w-[16rem]">
+      <p id="status-voz" class="text-sm text-ink/70 leading-snug">
         Toque e diga, por exemplo: <span class="italic">"Almoço 25 reais alimentação"</span> ou
         <span class="italic">"Recebi 3000 de salário"</span>
       </p>
@@ -186,23 +193,27 @@
          Também é preenchido automaticamente pelo reconhecimento de voz.
          ============================================================ -->
     <section>
-      <details id="form-details" class="group">
+      <details id="form-details" class="group bg-white rounded-3xl border border-black/5 px-4 shadow-sm shadow-black/[0.03]">
         <summary class="cursor-pointer select-none flex items-center justify-between
-                         font-display text-lg font-medium text-ink/90 py-1">
-          Adicionar / ajustar manualmente
+                         font-display text-lg font-medium py-3">
+          Novo lançamento
           <svg class="w-4 h-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
         </summary>
 
-        <form id="form-gasto" class="mt-4 space-y-3">
+        <p id="editando-aviso" class="hidden text-xs font-medium text-gold bg-gold/10 rounded-lg px-3 py-2 mt-3">
+          ✏️ Editando lançamento existente
+        </p>
+
+        <form id="form-gasto" class="mt-2 space-y-3 pb-4">
           <!-- Alterna entre Despesa e Receita; troca as categorias disponíveis -->
           <div class="grid grid-cols-2 gap-2">
             <button type="button" data-tipo="despesa"
-                    class="tipo-btn border border-black/10 rounded-xl py-2 text-sm font-medium transition-colors">
+                    class="tipo-btn border border-black/10 rounded-xl py-2.5 text-sm font-medium transition-colors">
               Despesa
             </button>
             <button type="button" data-tipo="receita"
-                    class="tipo-btn border border-black/10 rounded-xl py-2 text-sm font-medium transition-colors">
+                    class="tipo-btn border border-black/10 rounded-xl py-2.5 text-sm font-medium transition-colors">
               Receita
             </button>
           </div>
@@ -211,7 +222,7 @@
           <div>
             <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-descricao">Descrição</label>
             <input id="campo-descricao" name="descricao" type="text" required placeholder="Ex.: Almoço"
-                   class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                   class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-base
                           focus:outline-none focus:ring-2 focus:ring-forest/40" />
           </div>
 
@@ -219,13 +230,13 @@
             <div>
               <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-valor">Valor (R$)</label>
               <input id="campo-valor" name="valor" type="number" step="0.01" min="0" required placeholder="0,00"
-                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-base
                             focus:outline-none focus:ring-2 focus:ring-forest/40 transition-shadow" />
             </div>
             <div>
               <label class="block text-xs font-medium text-ink/60 mb-1" for="campo-data">Data</label>
               <input id="campo-data" name="data" type="date" required
-                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm
+                     class="w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-base
                             focus:outline-none focus:ring-2 focus:ring-forest/40" />
             </div>
           </div>
@@ -234,24 +245,15 @@
             <div class="flex items-center justify-between mb-1">
               <label class="block text-xs font-medium text-ink/60" for="campo-categoria">Categoria</label>
               <button type="button" id="btn-nova-categoria"
-                      class="flex items-center gap-1 text-[11px] font-medium text-forest active:opacity-60 transition-opacity">
+                      class="flex items-center gap-1 text-xs font-medium text-forest active:opacity-60 transition-opacity">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2.5" class="w-3 h-3"><path d="M12 5v14M5 12h14"/></svg>
                 Nova categoria
               </button>
             </div>
 
-            <div class="relative">
-              <select id="campo-categoria" name="categoria"
-                      class="w-full appearance-none rounded-xl border border-black/10 bg-white pl-4 pr-9 py-2.5 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-forest/40 transition-shadow">
-                <!-- Preenchido via JavaScript conforme o tipo (Despesa/Receita) -->
-              </select>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </div>
+            <input type="hidden" id="campo-categoria" name="categoria" />
+            <div id="categoria-chips" class="flex flex-wrap gap-2"></div>
 
             <!-- Mini-formulário para criar uma categoria nova, dentro do tipo atual (Despesa/Receita) -->
             <div id="nova-categoria-form" class="hidden mt-2 p-3 rounded-xl border border-black/10 bg-black/[0.02] space-y-2.5">
@@ -271,7 +273,7 @@
                   Adicionar categoria
                 </button>
                 <button type="button" id="btn-cancelar-categoria"
-                        class="text-xs text-ink/50 px-3 active:opacity-60 transition-opacity">
+                        class="text-xs text-ink/60 px-3 active:opacity-60 transition-opacity">
                   Cancelar
                 </button>
               </div>
@@ -279,11 +281,18 @@
             </div>
           </div>
 
-          <button type="submit" id="btn-salvar-gasto"
-                  class="w-full bg-forest hover:bg-forest-dark text-paper font-medium py-3 rounded-xl
-                         active:scale-[0.98] transition-[background-color,transform] shadow-sm shadow-forest/20">
-            Salvar gasto
-          </button>
+          <div class="flex gap-2">
+            <button type="submit" id="btn-salvar-gasto"
+                    class="flex-1 bg-forest hover:bg-forest-dark text-paper font-medium py-3 rounded-xl
+                           active:scale-[0.98] transition-[background-color,transform] shadow-sm shadow-forest/20">
+              Salvar gasto
+            </button>
+            <button type="button" id="btn-cancelar-edicao"
+                    class="hidden text-ink/60 text-sm font-medium px-4 rounded-xl border border-black/10
+                           active:bg-black/5 transition-colors">
+              Cancelar
+            </button>
+          </div>
         </form>
       </details>
     </section>
@@ -304,26 +313,26 @@
       <!-- Visão: lista de registros -->
       <div id="visao-lista">
         <div class="flex justify-end mb-2">
-          <span id="contagem-registros" class="text-xs text-ink/50">0 itens</span>
+          <span id="contagem-registros" class="text-xs text-ink/60">0 itens</span>
         </div>
 
-        <ul id="lista-gastos" class="space-y-2 max-h-[26rem] overflow-y-auto thin-scroll pr-1">
+        <ul id="lista-gastos" class="space-y-1.5">
           <!-- Itens inseridos via JavaScript -->
         </ul>
 
         <div id="estado-vazio" class="text-center py-12 hidden">
           <p class="text-3xl mb-2">🗒️</p>
-          <p class="text-sm text-ink/40">Nenhum registro neste período ainda.</p>
+          <p class="text-sm text-ink/60">Nada por aqui ainda. Toque no microfone ou no + para registrar.</p>
         </div>
       </div>
 
       <!-- Visão: gráfico de despesas por categoria (donut + legenda) -->
       <div id="visao-grafico" class="hidden flex flex-col items-center py-2">
-        <p class="text-[11px] text-ink/40 mb-4">Considera apenas despesas do período selecionado</p>
+        <p class="text-xs text-ink/60 mb-4">Considera apenas despesas do período selecionado</p>
         <div class="relative w-40 h-40 mb-6">
           <div id="donut-categorias" class="w-40 h-40 rounded-full"></div>
           <div class="absolute inset-0 m-auto w-24 h-24 bg-paper rounded-full flex flex-col items-center justify-center">
-            <span class="text-[10px] uppercase tracking-wide text-ink/40">Total</span>
+            <span class="text-xs text-ink/60">Total</span>
             <span id="donut-total" class="font-display text-sm font-semibold leading-tight text-center px-1"></span>
           </div>
         </div>
@@ -334,7 +343,7 @@
 
         <div id="estado-vazio-grafico" class="text-center py-10 hidden">
           <p class="text-3xl mb-2">📊</p>
-          <p class="text-sm text-ink/40">Nenhuma despesa registrada neste período ainda.</p>
+          <p class="text-sm text-ink/60">Nenhuma despesa registrada neste período ainda.</p>
         </div>
       </div>
 
@@ -346,24 +355,24 @@
             <button data-relatorio-tipo="semana" class="relatorio-tipo-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Semanal</button>
           </div>
         </div>
-        <p id="relatorio-periodo-label" class="text-[11px] text-ink/40 mb-4"></p>
+        <p id="relatorio-periodo-label" class="text-xs text-ink/60 mb-4"></p>
 
         <div id="relatorio-conteudo">
           <div class="grid grid-cols-3 gap-2 mb-6">
             <div class="bg-white rounded-xl border border-black/5 p-3">
-              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Saldo</p>
+              <p class="text-xs text-ink/60">Saldo</p>
               <p id="rel-saldo" class="font-display font-semibold text-sm mt-1"></p>
-              <p id="rel-saldo-delta" class="text-[11px] mt-0.5"></p>
+              <p id="rel-saldo-delta" class="text-xs mt-0.5"></p>
             </div>
             <div class="bg-white rounded-xl border border-black/5 p-3">
-              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Receitas</p>
+              <p class="text-xs text-ink/60">Receitas</p>
               <p id="rel-receitas" class="font-display font-semibold text-sm mt-1 text-forest"></p>
-              <p id="rel-receitas-delta" class="text-[11px] mt-0.5"></p>
+              <p id="rel-receitas-delta" class="text-xs mt-0.5"></p>
             </div>
             <div class="bg-white rounded-xl border border-black/5 p-3">
-              <p class="text-[10px] text-ink/40 uppercase tracking-wide">Despesas</p>
+              <p class="text-xs text-ink/60">Despesas</p>
               <p id="rel-despesas" class="font-display font-semibold text-sm mt-1 text-coral"></p>
-              <p id="rel-despesas-delta" class="text-[11px] mt-0.5"></p>
+              <p id="rel-despesas-delta" class="text-xs mt-0.5"></p>
             </div>
           </div>
 
@@ -380,7 +389,7 @@
 
         <div id="relatorio-vazio" class="text-center py-12 hidden">
           <p class="text-3xl mb-2">📈</p>
-          <p class="text-sm text-ink/40">Ainda não há dados suficientes neste e/ou no período anterior para gerar um relatório.</p>
+          <p class="text-sm text-ink/60">Ainda não há dados suficientes neste e/ou no período anterior para gerar um relatório.</p>
         </div>
       </div>
     </section>
@@ -388,27 +397,41 @@
     <!-- ============================================================
          AÇÕES: EXPORTAR / LIMPAR
          ============================================================ -->
-    <section class="flex gap-3 pt-2">
-      <button id="btn-exportar"
-        class="flex-1 flex items-center justify-center gap-2 border border-ink/15 text-ink bg-white/60
-               font-medium py-3 rounded-xl active:bg-black/5 active:scale-[0.98] transition-all">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" class="w-4 h-4"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>
-        Exportar CSV
-      </button>
-      <button id="btn-limpar"
-        class="flex items-center justify-center gap-2 border border-coral/30 text-coral bg-white/60
-               font-medium py-3 px-4 rounded-xl active:bg-coral/5 active:scale-[0.98] transition-all">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" class="w-4 h-4"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0 1 12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-12"/></svg>
-      </button>
+    <section>
+      <details class="group">
+        <summary class="cursor-pointer select-none flex items-center justify-between text-sm font-medium text-ink/70 py-2">
+          Dados e backup
+          <svg class="w-4 h-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <button id="btn-exportar" type="button" class="btn-sec">Exportar CSV</button>
+          <button id="btn-backup" type="button" class="btn-sec">Backup (.json)</button>
+          <button id="btn-restaurar" type="button" class="btn-sec">Restaurar backup</button>
+          <button id="btn-limpar" type="button" class="btn-sec !text-coral !border-coral/30">Apagar tudo</button>
+        </div>
+        <input id="input-restaurar" type="file" accept="application/json" class="hidden" />
+      </details>
     </section>
   </main>
 
-  <!-- Aviso curto (some sozinho após alguns segundos) -->
-  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-ink text-paper text-sm
+  <!-- Botão flutuante: abre o formulário de lançamento manual direto,
+       sem precisar rolar até a seção "Adicionar / ajustar manualmente". -->
+  <button id="btn-fab-add" type="button" aria-label="Adicionar lançamento"
+    class="fixed right-5 z-30 w-14 h-14 rounded-full bg-ink text-paper flex items-center justify-center
+           shadow-lg shadow-ink/30 active:scale-95 transition-transform"
+    style="bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.2" class="w-6 h-6"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <!-- Aviso curto (some sozinho após alguns segundos), com botão de ação opcional (ex.: Desfazer) -->
+  <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-ink text-paper text-sm
                           px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none
-                          transition-opacity duration-300 z-30 max-w-[90vw] text-center"></div>
+                          transition-opacity duration-300 z-30 max-w-[90vw] flex items-center gap-3">
+    <span id="toast-texto"></span>
+    <button id="toast-acao" type="button" class="hidden font-semibold text-gold underline shrink-0"></button>
+  </div>
 
 <script>
 /* ==================================================================
@@ -540,16 +563,36 @@ function inicioDaSemanaISO() {
   return local.toISOString().slice(0, 10);
 }
 
-function mostrarToast(mensagem) {
+// Aviso curto. Quando "acao" é informado ({ texto, onClick }), mostra um botão
+// (ex.: "Desfazer") e mantém o aviso visível por mais tempo.
+function mostrarToast(mensagem, acao) {
   const toast = document.getElementById("toast");
-  toast.textContent = mensagem;
+  const textoEl = document.getElementById("toast-texto");
+  const acaoEl = document.getElementById("toast-acao");
+
+  textoEl.textContent = mensagem;
+  acaoEl.onclick = null;
+  if (acao) {
+    acaoEl.textContent = acao.texto;
+    acaoEl.classList.remove("hidden");
+    acaoEl.onclick = () => {
+      acao.onClick();
+      esconderToast();
+    };
+  } else {
+    acaoEl.classList.add("hidden");
+  }
+
   toast.classList.remove("opacity-0");
   toast.classList.add("opacity-100");
   clearTimeout(mostrarToast._t);
-  mostrarToast._t = setTimeout(() => {
-    toast.classList.remove("opacity-100");
-    toast.classList.add("opacity-0");
-  }, 2800);
+  mostrarToast._t = setTimeout(esconderToast, acao ? 5000 : 2800);
+}
+
+function esconderToast() {
+  const toast = document.getElementById("toast");
+  toast.classList.remove("opacity-100");
+  toast.classList.add("opacity-0");
 }
 
 function escapeHTML(str) {
@@ -632,7 +675,7 @@ function atualizarOrcamentoUI() {
 
   const barra = document.getElementById("orcamento-barra");
   barra.style.width = percentual + "%";
-  const cor = gastoMes > orcamento ? "bg-coral" : percentual > 80 ? "bg-gold" : "bg-forest";
+  const cor = gastoMes > orcamento ? "bg-[#FFB9A3]" : percentual > 80 ? "bg-gold" : "bg-paper";
   barra.className = "h-full rounded-full transition-all duration-500 " + cor;
 }
 
@@ -676,6 +719,13 @@ const LABELS_PERIODO = {
   todos: "todo o período", personalizado: "período selecionado",
 };
 
+function rotuloData(iso) {
+  if (iso === hojeISO()) return "Hoje";
+  if (iso === somarDiasISO(hojeISO(), -1)) return "Ontem";
+  const [a, m, d] = iso.split("-").map(Number);
+  return capitalizar(new Date(a, m - 1, d).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }));
+}
+
 function renderizar() {
   const filtrados = filtrarPorPeriodo(gastos).slice().sort((a, b) => (a.data < b.data ? 1 : -1));
 
@@ -685,27 +735,38 @@ function renderizar() {
   let totalReceitas = 0;
   let totalDespesas = 0;
 
+  let dataAnterior = null;
   for (const g of filtrados) {
     if (g.tipo === "receita") totalReceitas += g.valor;
     else totalDespesas += g.valor;
 
+    if (g.data !== dataAnterior) {
+      dataAnterior = g.data;
+      const cab = document.createElement("li");
+      cab.className = "text-xs font-medium text-ink/60 pt-4 pb-0.5 first:pt-0";
+      cab.textContent = rotuloData(g.data);
+      listaEl.appendChild(cab);
+    }
+
     const positivo = g.tipo === "receita";
+    const cor = positivo ? "#2F6F5E" : (CORES_CATEGORIA[g.categoria] || "#94A3B8");
     const li = document.createElement("li");
-    li.className = "flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-black/5 shadow-sm shadow-black/[0.02] transition-shadow hover:shadow-md hover:shadow-black/[0.04]";
+    li.className = "flex items-center justify-between gap-3 bg-white rounded-2xl pl-3 pr-1.5 py-2.5 border border-black/5 cursor-pointer active:bg-black/[0.03] transition-colors";
+    li.setAttribute("data-editar", g.id);
     li.innerHTML = `
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-xl leading-none">${ICONES_CATEGORIA[g.categoria] ?? "📎"}</span>
+        <span class="w-10 h-10 rounded-xl flex items-center justify-center text-xl leading-none shrink-0" style="background:${cor}1F">${ICONES_CATEGORIA[g.categoria] ?? "📎"}</span>
         <div class="min-w-0">
           <p class="font-medium text-sm truncate">${escapeHTML(g.descricao)}</p>
-          <p class="text-xs text-ink/50">${g.categoria} · ${formatarDataExibicao(g.data)}</p>
+          <p class="text-xs text-ink/60 truncate">${escapeHTML(g.categoria)}</p>
         </div>
       </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <span class="font-display font-semibold text-sm ${positivo ? "text-forest" : "text-ink"}">
+      <div class="flex items-center shrink-0">
+        <span class="font-display font-semibold text-base ${positivo ? "text-forest" : "text-ink"}">
           ${positivo ? "+" : "−"} ${formatarMoeda(g.valor)}
         </span>
         <button data-remover="${g.id}" aria-label="Remover"
-          class="text-ink/30 hover:text-coral transition-colors p-1">
+          class="text-ink/60 hover:text-coral transition-colors p-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" class="w-4 h-4"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -715,8 +776,8 @@ function renderizar() {
 
   const saldo = totalReceitas - totalDespesas;
   totalPeriodoEl.textContent = formatarMoeda(saldo);
-  totalPeriodoEl.classList.toggle("text-coral", saldo < 0);
-  totalPeriodoEl.classList.toggle("text-ink", saldo >= 0);
+  totalPeriodoEl.classList.toggle("text-[#FFB9A3]", saldo < 0);
+  totalPeriodoEl.classList.toggle("text-paper", saldo >= 0);
   totalReceitasEl.textContent = formatarMoeda(totalReceitas);
   totalDespesasEl.textContent = formatarMoeda(totalDespesas);
 
@@ -728,14 +789,29 @@ function renderizar() {
   if (!visaoRelatorioEl.classList.contains("hidden")) renderizarRelatorio();
 }
 
-// Remoção de um item (delegação de evento)
+// Clique num item: remover (ícone) ou editar (resto da linha) — delegação de evento.
 listaEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-remover]");
-  if (!btn) return;
-  const id = btn.getAttribute("data-remover");
-  gastos = gastos.filter((g) => g.id !== id);
-  salvarGastos(gastos);
-  renderizar();
+  const btnRemover = e.target.closest("[data-remover]");
+  if (btnRemover) {
+    const id = btnRemover.getAttribute("data-remover");
+    const indice = gastos.findIndex((g) => g.id === id);
+    if (indice === -1) return;
+    const [removido] = gastos.splice(indice, 1);
+    salvarGastos(gastos);
+    renderizar();
+    mostrarToast("Registro removido.", {
+      texto: "Desfazer",
+      onClick: () => {
+        gastos.splice(indice, 0, removido);
+        salvarGastos(gastos);
+        renderizar();
+      },
+    });
+    return;
+  }
+
+  const li = e.target.closest("[data-editar]");
+  if (li) iniciarEdicao(li.getAttribute("data-editar"));
 });
 
 /* ==================================================================
@@ -857,14 +933,14 @@ function resumoIntervalo(inicio, fim) {
 // "boaSeSubir": true quando um aumento é positivo (ex.: receitas); false quando é negativo (ex.: despesas).
 function formatarVariacao(atual, anterior, boaSeSubir) {
   if (anterior <= 0) {
-    if (atual <= 0) return { texto: "sem dados no período anterior", classe: "text-ink/40" };
-    return { texto: "novo em relação ao período anterior", classe: "text-ink/40" };
+    if (atual <= 0) return { texto: "sem dados no período anterior", classe: "text-ink/60" };
+    return { texto: "novo em relação ao período anterior", classe: "text-ink/60" };
   }
   const percentual = ((atual - anterior) / anterior) * 100;
   const seta = percentual > 0.5 ? "▲" : percentual < -0.5 ? "▼" : "→";
   const subiu = percentual > 0.5;
   const desceu = percentual < -0.5;
-  let classe = "text-ink/40";
+  let classe = "text-ink/60";
   if (subiu) classe = boaSeSubir ? "text-forest" : "text-coral";
   else if (desceu) classe = boaSeSubir ? "text-coral" : "text-forest";
   return { texto: `${seta} ${Math.abs(percentual).toFixed(0)}% vs. período anterior`, classe };
@@ -905,17 +981,17 @@ function renderizarRelatorio() {
   relSaldoEl.classList.toggle("text-coral", saldoAtual < 0);
   const varSaldo = formatarVariacao(saldoAtual, saldoAnterior, true);
   relSaldoDeltaEl.textContent = varSaldo.texto;
-  relSaldoDeltaEl.className = "text-[11px] mt-0.5 " + varSaldo.classe;
+  relSaldoDeltaEl.className = "text-xs mt-0.5 " + varSaldo.classe;
 
   relReceitasEl.textContent = formatarMoeda(atual.receitas);
   const varReceitas = formatarVariacao(atual.receitas, anterior.receitas, true);
   relReceitasDeltaEl.textContent = varReceitas.texto;
-  relReceitasDeltaEl.className = "text-[11px] mt-0.5 " + varReceitas.classe;
+  relReceitasDeltaEl.className = "text-xs mt-0.5 " + varReceitas.classe;
 
   relDespesasEl.textContent = formatarMoeda(atual.despesas);
   const varDespesas = formatarVariacao(atual.despesas, anterior.despesas, false);
   relDespesasDeltaEl.textContent = varDespesas.texto;
-  relDespesasDeltaEl.className = "text-[11px] mt-0.5 " + varDespesas.classe;
+  relDespesasDeltaEl.className = "text-xs mt-0.5 " + varDespesas.classe;
 
   // --- Comparação por categoria (maiores variações primeiro) ---
   const categorias = new Set([...Object.keys(atual.porCategoria), ...Object.keys(anterior.porCategoria)]);
@@ -928,7 +1004,7 @@ function renderizarRelatorio() {
 
   relatorioCategoriasEl.innerHTML = "";
   if (linhasCategoria.length === 0) {
-    relatorioCategoriasEl.innerHTML = `<p class="text-sm text-ink/40">Nenhuma despesa em nenhum dos dois períodos.</p>`;
+    relatorioCategoriasEl.innerHTML = `<p class="text-sm text-ink/60">Nenhuma despesa em nenhum dos dois períodos.</p>`;
   }
   for (const l of linhasCategoria.slice(0, 6)) {
     const cor = CORES_CATEGORIA[l.cat] || "#94A3B8";
@@ -942,7 +1018,7 @@ function renderizarRelatorio() {
       </span>
       <span class="text-right shrink-0">
         <span class="block font-medium">${formatarMoeda(l.valorAtual)}</span>
-        <span class="block text-[11px] ${var_.classe}">${var_.texto}</span>
+        <span class="block text-xs ${var_.classe}">${var_.texto}</span>
       </span>`;
     relatorioCategoriasEl.appendChild(div);
   }
@@ -1077,11 +1153,38 @@ campoData.value = hojeISO();
 function popularCategorias(tipo) {
   const lista = categoriasDoTipo(tipo);
   const atual = campoCategoria.value;
-  campoCategoria.innerHTML = lista
-    .map((c) => `<option value="${escapeHTML(c)}">${ICONES_CATEGORIA[c] ?? "🏷️"}  ${escapeHTML(c)}</option>`)
+  const chipsEl = document.getElementById("categoria-chips");
+  chipsEl.innerHTML = lista
+    .map(
+      (c) => `
+      <button type="button" data-categoria="${escapeHTML(c)}"
+        class="categoria-chip flex items-center gap-1.5 rounded-full border border-black/10 bg-white
+               pl-2.5 pr-3 py-1.5 text-sm transition-colors active:scale-95">
+        <span>${ICONES_CATEGORIA[c] ?? "🏷️"}</span><span>${escapeHTML(c)}</span>
+      </button>`
+    )
     .join("");
-  if (lista.includes(atual)) campoCategoria.value = atual;
+  selecionarCategoria(lista.includes(atual) ? atual : lista[0]);
 }
+
+// Marca visualmente o chip escolhido e mantém o valor no campo oculto
+// que é enviado junto do formulário.
+function selecionarCategoria(nome) {
+  campoCategoria.value = nome;
+  document.querySelectorAll(".categoria-chip").forEach((btn) => {
+    const ativo = btn.dataset.categoria === nome;
+    btn.classList.toggle("bg-forest", ativo);
+    btn.classList.toggle("text-paper", ativo);
+    btn.classList.toggle("border-transparent", ativo);
+    btn.classList.toggle("bg-white", !ativo);
+  });
+}
+
+document.getElementById("categoria-chips").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-categoria]");
+  if (!btn) return;
+  selecionarCategoria(btn.dataset.categoria);
+});
 
 function selecionarTipo(tipo) {
   campoTipo.value = tipo;
@@ -1120,7 +1223,7 @@ function renderizarListaCategoriasCustom() {
     return;
   }
   listaCategoriasCustomEl.innerHTML =
-    `<p class="text-[11px] text-ink/40 pt-1">Suas categorias:</p>` +
+    `<p class="text-xs text-ink/60 pt-1">Suas categorias:</p>` +
     lista
       .map(
         (c) => `
@@ -1183,7 +1286,7 @@ document.getElementById("btn-salvar-categoria").addEventListener("click", () => 
   registrarCategoriaNosMapas(tipo, nova);
 
   popularCategorias(tipo);
-  campoCategoria.value = nome;
+  selecionarCategoria(nome);
 
   inputCategoriaEmoji.value = "";
   inputCategoriaNome.value = "";
@@ -1225,12 +1328,58 @@ listaCategoriasCustomEl.addEventListener("click", (e) => {
 
 selecionarTipo("despesa"); // estado inicial
 
+document.getElementById("btn-fab-add").addEventListener("click", () => {
+  const detalhes = document.getElementById("form-details");
+  detalhes.open = true;
+  detalhes.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("campo-descricao").focus();
+});
+
+/* ==================================================================
+   EDITAR LANÇAMENTO EXISTENTE
+   Toque num item da lista abre o mesmo formulário, pré-preenchido;
+   salvar atualiza o registro em vez de criar um novo.
+   ================================================================== */
+let editandoId = null;
+const btnCancelarEdicao = document.getElementById("btn-cancelar-edicao");
+const avisoEdicaoEl = document.getElementById("editando-aviso");
+
+function iniciarEdicao(id) {
+  const g = gastos.find((x) => x.id === id);
+  if (!g) return;
+  editandoId = id;
+
+  document.getElementById("form-details").open = true;
+  selecionarTipo(g.tipo);
+  document.getElementById("campo-descricao").value = g.descricao;
+  campoValor.value = g.valor.toFixed(2);
+  campoData.value = g.data;
+  selecionarCategoria(g.categoria);
+
+  btnSalvarGasto.textContent = "Salvar alterações";
+  btnCancelarEdicao.classList.remove("hidden");
+  avisoEdicaoEl.classList.remove("hidden");
+  document.getElementById("form-details").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("campo-descricao").focus();
+}
+
+function cancelarEdicao() {
+  editandoId = null;
+  form.reset();
+  campoData.value = hojeISO();
+  selecionarTipo("despesa");
+  btnCancelarEdicao.classList.add("hidden");
+  avisoEdicaoEl.classList.add("hidden");
+  document.getElementById("form-details").open = false;
+}
+
+btnCancelarEdicao.addEventListener("click", cancelarEdicao);
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const dados = new FormData(form);
 
-  const novoGasto = {
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+  const valores = {
     tipo: dados.get("tipo") === "receita" ? "receita" : "despesa",
     descricao: (dados.get("descricao") || "").trim(),
     valor: parseFloat(String(dados.get("valor")).replace(",", ".")) || 0,
@@ -1238,34 +1387,44 @@ form.addEventListener("submit", (e) => {
     data: dados.get("data") || hojeISO(),
   };
 
-  if (!novoGasto.descricao || novoGasto.valor <= 0) {
+  if (!valores.descricao || valores.valor <= 0) {
     mostrarToast("Preencha descrição e um valor válido.");
     return;
   }
 
-  gastos.push(novoGasto);
+  const estavaEditando = !!editandoId;
+  if (estavaEditando) {
+    gastos = gastos.map((g) => (g.id === editandoId ? { ...g, ...valores } : g));
+  } else {
+    gastos.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), ...valores });
+  }
   salvarGastos(gastos);
   renderizar();
 
   // Alerta de orçamento: só faz sentido para despesas do mês corrente.
   const orcamento = obterOrcamento();
   let ultrapassouOrcamento = false;
-  if (novoGasto.tipo === "despesa" && orcamento > 0) {
-    const [ano, mes] = novoGasto.data.split("-").map(Number);
+  if (valores.tipo === "despesa" && orcamento > 0) {
+    const [ano, mes] = valores.data.split("-").map(Number);
     const agora = new Date();
     const ehMesAtual = ano === agora.getFullYear() && mes === agora.getMonth() + 1;
     ultrapassouOrcamento = ehMesAtual && calcularDespesasMesAtual() > orcamento;
   }
 
+  editandoId = null;
   form.reset();
   campoData.value = hojeISO();
   selecionarTipo("despesa");
   document.getElementById("form-details").open = false;
+  btnCancelarEdicao.classList.add("hidden");
+  avisoEdicaoEl.classList.add("hidden");
 
   if (ultrapassouOrcamento) {
     mostrarToast("⚠️ Salvo — você ultrapassou o orçamento mensal.");
+  } else if (estavaEditando) {
+    mostrarToast("Alterações salvas ✓");
   } else {
-    mostrarToast(novoGasto.tipo === "receita" ? "Receita salva ✓" : "Gasto salvo ✓");
+    mostrarToast(valores.tipo === "receita" ? "Receita salva ✓" : "Gasto salvo ✓");
   }
 });
 
@@ -1386,7 +1545,7 @@ function processarFraseDeVoz(frase) {
   document.getElementById("campo-descricao").value = descricao;
   campoValor.value = valor.toFixed(2);
   campoData.value = hojeISO();
-  campoCategoria.value = categoria;
+  selecionarCategoria(categoria);
 
   // Valor identificado com sucesso: salva direto, sem precisar confirmar.
   document.getElementById("form-details").open = false;
@@ -1431,6 +1590,82 @@ document.getElementById("btn-exportar").addEventListener("click", () => {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+});
+
+/* ==================================================================
+   BACKUP / RESTAURAR (JSON completo)
+   Como tudo fica só no localStorage deste aparelho/navegador, um
+   backup em JSON é a única forma de não perder os dados ao trocar de
+   aparelho, reinstalar o app ou limpar os dados do navegador.
+   ================================================================== */
+document.getElementById("btn-backup").addEventListener("click", () => {
+  const backup = {
+    versao: 1,
+    exportadoEm: new Date().toISOString(),
+    gastos,
+    orcamento: obterOrcamento(),
+    categoriasCustom,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const agora = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `meus-gastos-backup-${agora}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  mostrarToast("Backup baixado ✓");
+});
+
+const inputRestaurar = document.getElementById("input-restaurar");
+document.getElementById("btn-restaurar").addEventListener("click", () => inputRestaurar.click());
+
+inputRestaurar.addEventListener("change", () => {
+  const arquivo = inputRestaurar.files[0];
+  if (!arquivo) return;
+
+  const leitor = new FileReader();
+  leitor.onload = () => {
+    let backup;
+    try {
+      backup = JSON.parse(leitor.result);
+    } catch (e) {
+      mostrarToast("Arquivo inválido. Selecione um backup em .json.");
+      inputRestaurar.value = "";
+      return;
+    }
+
+    if (!Array.isArray(backup.gastos)) {
+      mostrarToast("Esse arquivo não parece ser um backup válido.");
+      inputRestaurar.value = "";
+      return;
+    }
+
+    const confirmado = confirm(
+      `Isso vai SUBSTITUIR todos os dados atuais (${gastos.length} registro(s)) pelos ${backup.gastos.length} registro(s) do backup. Essa ação não pode ser desfeita. Continuar?`
+    );
+    inputRestaurar.value = "";
+    if (!confirmado) return;
+
+    gastos = backup.gastos.map((g) => ({ tipo: "despesa", ...g }));
+    salvarGastos(gastos);
+
+    if (backup.orcamento) salvarOrcamento(backup.orcamento);
+
+    if (backup.categoriasCustom) {
+      categoriasCustom = { despesa: backup.categoriasCustom.despesa || [], receita: backup.categoriasCustom.receita || [] };
+      salvarCategoriasCustomStorage();
+      categoriasCustom.despesa.forEach((c) => registrarCategoriaNosMapas("despesa", c));
+      categoriasCustom.receita.forEach((c) => registrarCategoriaNosMapas("receita", c));
+      popularCategorias(campoTipo.value);
+    }
+
+    renderizar();
+    mostrarToast("Backup restaurado ✓");
+  };
+  leitor.readAsText(arquivo);
 });
 
 /* ==================================================================

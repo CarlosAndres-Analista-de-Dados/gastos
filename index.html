@@ -308,6 +308,7 @@
           <button data-visao="lista" class="visao-btn px-3 py-1 rounded-full transition-colors tab-active">Lista</button>
           <button data-visao="grafico" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Por categoria</button>
           <button data-visao="relatorio" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Relatório</button>
+          <button data-visao="meta" class="visao-btn px-3 py-1 rounded-full transition-colors hover:bg-black/5">Meta</button>
         </div>
       </div>
 
@@ -393,6 +394,29 @@
         <div id="relatorio-vazio" class="text-center py-12 hidden">
           <p class="text-3xl mb-2">📈</p>
           <p class="text-sm text-ink/60">Ainda não há dados suficientes neste e/ou no período anterior para gerar um relatório.</p>
+        </div>
+      </div>
+
+      <!-- Visão: gráfico da meta mensal (realizado x projeção x orçamento) -->
+      <div id="visao-meta" class="hidden">
+        <div id="visao-meta-conteudo">
+          <p class="text-xs text-ink/60 mb-3">
+            Sempre baseado no mês atual (<span id="meta-mes-label"></span>), independente do período selecionado acima.
+          </p>
+          <div class="bg-white rounded-2xl border border-black/5 p-3">
+            <svg id="grafico-meta-svg" viewBox="0 0 320 190" class="w-full h-auto"></svg>
+          </div>
+          <div class="flex items-center justify-center gap-4 mt-4 text-xs text-ink/70">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#C4573D"></span>Realizado</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#E8A33D"></span>Projetado</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:#2F6F5E"></span>Meta</span>
+          </div>
+        </div>
+
+        <div id="estado-vazio-meta" class="hidden text-center py-12">
+          <p class="text-3xl mb-2">🎯</p>
+          <p class="text-sm text-ink/60 mb-4">Defina um orçamento mensal para ver o gráfico de realizado, projeção e meta.</p>
+          <button id="btn-orcamento-do-grafico" type="button" class="btn-sec inline-flex px-5">Definir orçamento mensal</button>
         </div>
       </div>
     </section>
@@ -728,6 +752,7 @@ document.getElementById("btn-salvar-orcamento").addEventListener("click", () => 
   orcamentoForm.classList.add("hidden");
   orcamentoForm.classList.remove("flex");
   atualizarOrcamentoUI();
+  if (!visaoMetaEl.classList.contains("hidden")) renderizarGraficoMeta();
   mostrarToast(valor > 0 ? "Orçamento mensal salvo ✓" : "Orçamento removido.");
 });
 
@@ -815,6 +840,7 @@ function renderizar() {
   renderizarGrafico(filtrados.filter((g) => g.tipo === "despesa"));
   atualizarOrcamentoUI();
   if (!visaoRelatorioEl.classList.contains("hidden")) renderizarRelatorio();
+  if (!visaoMetaEl.classList.contains("hidden")) renderizarGraficoMeta();
 }
 
 // Clique num item: remover (ícone) ou editar (resto da linha) — delegação de evento.
@@ -898,6 +924,130 @@ function renderizarGrafico(despesasFiltradas) {
     legendaEl.appendChild(linha);
   }
 }
+
+/* ==================================================================
+   GRÁFICO DA META MENSAL (Realizado x Projetado x Meta)
+   Desenhado com SVG puro (sem biblioteca de gráficos), sempre sobre
+   o mês corrente: acumulado diário de despesas (Realizado), reta de
+   projeção no ritmo atual (Projetado) e linha do orçamento (Meta).
+   ================================================================== */
+const graficoMetaSvgEl = document.getElementById("grafico-meta-svg");
+const visaoMetaConteudoEl = document.getElementById("visao-meta-conteudo");
+const estadoVazioMetaEl = document.getElementById("estado-vazio-meta");
+const metaMesLabelEl = document.getElementById("meta-mes-label");
+
+function pillSVG(cx, cy, texto, corFundo) {
+  const largura = texto.length * 4.3 + 12;
+  const x = cx - largura / 2;
+  const y = cy - 7;
+  return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${largura.toFixed(1)}" height="14" rx="7" fill="${corFundo}"></rect>
+    <text x="${cx.toFixed(1)}" y="${(cy + 2.6).toFixed(1)}" text-anchor="middle" font-size="6.6" font-weight="700" fill="#fff" font-family="inherit">${texto}</text>`;
+}
+
+function renderizarGraficoMeta() {
+  const orcamento = obterOrcamento();
+
+  if (orcamento <= 0) {
+    visaoMetaConteudoEl.classList.add("hidden");
+    estadoVazioMetaEl.classList.remove("hidden");
+    return;
+  }
+  visaoMetaConteudoEl.classList.remove("hidden");
+  estadoVazioMetaEl.classList.add("hidden");
+
+  const infoMes = intervaloMes(0);
+  metaMesLabelEl.textContent = infoMes.label;
+
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = agora.getMonth() + 1;
+  const diasNoMes = infoMes.diasNoPeriodo;
+  const diasPassados = Math.min(agora.getDate(), diasNoMes);
+
+  // Despesas do mês corrente, somadas por dia do mês.
+  const porDia = {};
+  gastos.filter((g) => g.tipo === "despesa").forEach((g) => {
+    const [a, m, d] = g.data.split("-").map(Number);
+    if (a === ano && m === mes) porDia[d] = (porDia[d] || 0) + g.valor;
+  });
+
+  let acumulado = 0;
+  const cumulativoPorDia = { 0: 0 };
+  for (let d = 1; d <= diasPassados; d++) {
+    acumulado += porDia[d] || 0;
+    cumulativoPorDia[d] = acumulado;
+  }
+  const gastoMes = acumulado;
+  const mediaDiaria = diasPassados > 0 ? gastoMes / diasPassados : 0;
+  const projecaoFinal = mediaDiaria * diasNoMes;
+
+  const maxValor = Math.max(orcamento, projecaoFinal, gastoMes, 1) * 1.18;
+
+  // --- Escalas: viewBox 320x190, com margens para eixos e rótulos ---
+  const W = 320, H = 190;
+  const M = { left: 6, right: 6, top: 24, bottom: 18 };
+  const plotW = W - M.left - M.right;
+  const plotH = H - M.top - M.bottom;
+  const escX = (dia) => M.left + (dia / diasNoMes) * plotW;
+  const escY = (valor) => M.top + plotH - (Math.max(0, valor) / maxValor) * plotH;
+  const clampX = (cx) => Math.min(W - M.right - 4, Math.max(M.left + 4, cx));
+
+  // --- Linhas de grade horizontais (0%, 50%, 100% do máximo) ---
+  let grade = "";
+  [0, 0.5, 1].forEach((f) => {
+    const gy = escY(maxValor * f).toFixed(1);
+    grade += `<line x1="${M.left}" y1="${gy}" x2="${W - M.right}" y2="${gy}" stroke="#1F2A24" stroke-opacity="0.06" stroke-width="1"></line>`;
+  });
+
+  // --- Área e linha do Realizado ---
+  const pontosRealizado = [];
+  for (let d = 0; d <= diasPassados; d++) pontosRealizado.push([d, cumulativoPorDia[d]]);
+  const linhaRealizadoStr = pontosRealizado.map(([d, v]) => `${escX(d).toFixed(1)},${escY(v).toFixed(1)}`).join(" ");
+  const areaRealizadoStr = `${escX(0).toFixed(1)},${escY(0).toFixed(1)} ${linhaRealizadoStr} ${escX(diasPassados).toFixed(1)},${escY(0).toFixed(1)}`;
+
+  // --- Reta de Projeção (ritmo atual, do dia 0 ao fim do mês) ---
+  const linhaProjetadoStr = `${escX(0).toFixed(1)},${escY(0).toFixed(1)} ${escX(diasNoMes).toFixed(1)},${escY(projecaoFinal).toFixed(1)}`;
+
+  // --- Linha da Meta (horizontal, valor do orçamento) ---
+  const yMeta = escY(orcamento);
+  const linhaMetaStr = `${escX(0).toFixed(1)},${yMeta.toFixed(1)} ${escX(diasNoMes).toFixed(1)},${yMeta.toFixed(1)}`;
+
+  // --- Marcador vertical do dia de hoje ---
+  const xHoje = escX(diasPassados).toFixed(1);
+  const marcadorHoje = `<line x1="${xHoje}" y1="${M.top}" x2="${xHoje}" y2="${H - M.bottom}" stroke="#1F2A24" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="2 2"></line>`;
+
+  // --- Selos (pills) com os valores ---
+  let yProjetadoPill = escY(projecaoFinal) - 10;
+  if (Math.abs(yProjetadoPill - (yMeta - 10)) < 14) yProjetadoPill = yMeta - 10 + 14;
+  const selos =
+    pillSVG(clampX((escX(0) + escX(diasNoMes)) / 2), yMeta - 10, `Meta: ${formatarMoeda(orcamento)}`, "#2F6F5E") +
+    pillSVG(clampX(escX(diasPassados)), Math.max(M.top + 6, escY(gastoMes) - 10), `Realizado: ${formatarMoeda(gastoMes)}`, "#C4573D") +
+    pillSVG(clampX(escX(diasNoMes)), Math.max(M.top + 6, yProjetadoPill), `Projetado: ${formatarMoeda(projecaoFinal)}`, "#E8A33D");
+
+  // --- Rótulos do eixo X ---
+  const rotulosX = `
+    <text x="${escX(0).toFixed(1)}" y="${H - 4}" font-size="6.5" fill="#1F2A24" fill-opacity="0.5" text-anchor="start">Dia 1</text>
+    <text x="${xHoje}" y="${H - 4}" font-size="6.5" fill="#1F2A24" fill-opacity="0.5" text-anchor="middle">Hoje</text>
+    <text x="${escX(diasNoMes).toFixed(1)}" y="${H - 4}" font-size="6.5" fill="#1F2A24" fill-opacity="0.5" text-anchor="end">Dia ${diasNoMes}</text>`;
+
+  graficoMetaSvgEl.innerHTML = `
+    ${grade}
+    <polyline points="${areaRealizadoStr}" fill="#C4573D" fill-opacity="0.12" stroke="none"></polyline>
+    <polyline points="${linhaProjetadoStr}" fill="none" stroke="#E8A33D" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="round"></polyline>
+    <polyline points="${linhaMetaStr}" fill="none" stroke="#2F6F5E" stroke-width="1.6" stroke-dasharray="5 3" stroke-linecap="round"></polyline>
+    ${marcadorHoje}
+    <polyline points="${linhaRealizadoStr}" fill="none" stroke="#C4573D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    <circle cx="${xHoje}" cy="${escY(gastoMes).toFixed(1)}" r="3" fill="#C4573D"></circle>
+    ${rotulosX}
+    ${selos}
+  `;
+}
+
+document.getElementById("btn-orcamento-do-grafico").addEventListener("click", () => {
+  if (orcamentoForm.classList.contains("hidden")) btnOrcamento.click();
+  btnOrcamento.scrollIntoView({ behavior: "smooth", block: "center" });
+  inputOrcamento.focus();
+});
 
 /* ==================================================================
    RELATÓRIO COMPARATIVO (mensal / semanal)
@@ -1261,6 +1411,7 @@ document.querySelectorAll(".relatorio-tipo-btn").forEach((btn) => {
 const visaoListaEl = document.getElementById("visao-lista");
 const visaoGraficoEl = document.getElementById("visao-grafico");
 const visaoRelatorioEl = document.getElementById("visao-relatorio");
+const visaoMetaEl = document.getElementById("visao-meta");
 
 document.querySelectorAll(".visao-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1270,7 +1421,9 @@ document.querySelectorAll(".visao-btn").forEach((btn) => {
     visaoListaEl.classList.toggle("hidden", visao !== "lista");
     visaoGraficoEl.classList.toggle("hidden", visao !== "grafico");
     visaoRelatorioEl.classList.toggle("hidden", visao !== "relatorio");
+    visaoMetaEl.classList.toggle("hidden", visao !== "meta");
     if (visao === "relatorio") renderizarRelatorio();
+    if (visao === "meta") renderizarGraficoMeta();
   });
 });
 

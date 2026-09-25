@@ -7,7 +7,7 @@ App web para controlar gastos e receitas pessoais. Funciona no navegador do celu
 - **Registro por voz:** toque no microfone e diga, por exemplo, "Almoço 25 reais alimentação" ou "Recebi 3000 de salário". O app identifica descrição, valor, categoria e tipo, e salva o lançamento.
 - **Lançamento manual:** formulário com tipo (despesa ou receita), descrição, valor, data e categoria. Toque em qualquer item da lista para editar.
 - **Saldo por período:** Hoje, Semana, Mês, Tudo ou um intervalo personalizado, com totais de receitas e despesas.
-- **Orçamento mensal:** defina um teto de gastos e acompanhe a barra de progresso. O app avisa ao salvar uma despesa que ultrapassa o orçamento.
+- **Orçamento mensal com projeção:** defina um teto de gastos e acompanhe a barra de progresso. Logo abaixo dela, o app mostra a projeção de fechamento do mês no ritmo atual e, quando a meta está em risco, quanto dá para gastar por dia até o fim do mês sem ultrapassá-la. O app também avisa ao salvar uma despesa que ultrapassa o orçamento.
 - **Três visões dos registros:**
   - **Lista:** agrupada por dia (Hoje, Ontem, data por extenso).
   - **Por categoria:** gráfico de rosca com as despesas do período.

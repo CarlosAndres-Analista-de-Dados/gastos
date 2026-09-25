@@ -128,6 +128,7 @@
         <div class="h-2 bg-white/15 rounded-full overflow-hidden">
           <div id="orcamento-barra" class="h-full rounded-full transition-all duration-500"></div>
         </div>
+        <p id="orcamento-projecao" class="text-xs text-paper/80 mt-2 leading-relaxed"></p>
       </div>
       <button id="btn-orcamento" type="button" class="text-xs text-paper/75 underline underline-offset-2 mt-3 py-1">
         Definir orçamento mensal
@@ -679,6 +680,31 @@ function atualizarOrcamentoUI() {
   barra.style.width = percentual + "%";
   const cor = gastoMes > orcamento ? "bg-[#FFB9A3]" : percentual > 80 ? "bg-gold" : "bg-paper";
   barra.className = "h-full rounded-full transition-all duration-500 " + cor;
+
+  // --- Projeção: no ritmo atual, quanto o mês deve fechar, e quanto dá
+  //     para gastar por dia nos dias restantes sem estourar a meta. ---
+  const diasPassados = new Date().getDate();
+  const diasNoMes = intervaloMes(0).diasNoPeriodo;
+  const diasRestantes = Math.max(0, diasNoMes - diasPassados);
+  const mediaDiaria = gastoMes / diasPassados;
+  const projecao = mediaDiaria * diasNoMes;
+  const restante = Math.max(0, orcamento - gastoMes);
+  const limiteDiario = diasRestantes > 0 ? restante / diasRestantes : 0;
+  const plural = diasRestantes !== 1 ? "s" : "";
+
+  const projEl = document.getElementById("orcamento-projecao");
+  if (gastoMes >= orcamento) {
+    projEl.innerHTML = diasRestantes > 0
+      ? `😬 Meta já ultrapassada. Restam ${diasRestantes} dia${plural} no mês — tente gastar o mínimo possível a partir de agora.`
+      : `😬 Meta ultrapassada neste mês.`;
+  } else if (diasPassados < 3) {
+    projEl.innerHTML = `Projeção do mês: <b>${formatarMoeda(projecao)}</b> — início do mês, ainda pouco confiável.`;
+  } else if (projecao > orcamento) {
+    projEl.innerHTML = `⚠️ No ritmo atual, o mês deve fechar em <b>${formatarMoeda(projecao)}</b>, acima da meta. Gaste até <b>${formatarMoeda(limiteDiario)}/dia</b> nos ${diasRestantes} dia${plural} restantes para não ultrapassar.`;
+  } else {
+    projEl.innerHTML = `✅ No ritmo atual, o mês deve fechar em <b>${formatarMoeda(projecao)}</b>, dentro da meta` +
+      (diasRestantes > 0 ? ` — dá para gastar até <b>${formatarMoeda(limiteDiario)}/dia</b> e ainda ficar dentro dela.` : ".");
+  }
 }
 
 const btnOrcamento = document.getElementById("btn-orcamento");

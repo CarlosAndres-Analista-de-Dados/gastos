@@ -8,11 +8,12 @@ App web para controlar gastos e receitas pessoais. Funciona no navegador do celu
 - **Lançamento manual:** formulário com tipo (despesa ou receita), descrição, valor, data e categoria. Toque em qualquer item da lista para editar.
 - **Saldo por período:** Hoje, Semana, Mês, Tudo ou um intervalo personalizado, com totais de receitas e despesas.
 - **Orçamento mensal com projeção:** defina um teto de gastos e acompanhe a barra de progresso. Logo abaixo dela, o app mostra a projeção de fechamento do mês no ritmo atual e, quando a meta está em risco, quanto dá para gastar por dia até o fim do mês sem ultrapassá-la. O app também avisa ao salvar uma despesa que ultrapassa o orçamento. A aba **Meta**, na seção de registros, mostra isso como gráfico (veja abaixo).
+- **Gastos fixos do mês:** cadastre contas recorrentes (luz, telefone, aluguel...) com valor, dia de vencimento e categoria. Toque em **Pagar** para gerar a despesa do mês (toque de novo para desfazer). O que ainda não foi pago entra na projeção do orçamento e no gráfico da aba **Meta**, no dia do vencimento, e não é contado em dobro depois de pago. Se já lançou a conta como despesa comum, não cadastre também como fixa.
 - **Quatro visões dos registros:**
   - **Lista:** agrupada por dia (Hoje, Ontem, data por extenso).
   - **Por categoria:** gráfico de rosca com as despesas do período.
   - **Relatório:** compara o mês (ou a semana) atual com o anterior e gera dicas automáticas. Nos modos Mensal e Semanal, inclui uma **análise aprofundada**: diagnóstico (taxa de poupança, média diária, projeção), tendência de 6 meses, metas por categoria, padrões de comportamento (dia da semana, quinzena, pequenos gastos, gastos recorrentes, maiores despesas), regra 50/30/20 e um plano com teto sugerido para o mês seguinte.
-  - **Meta:** com orçamento mensal definido, mostra num gráfico o acumulado de despesas do mês (Realizado), a reta de projeção no ritmo atual (Projetado) e a linha do orçamento (Meta).
+  - **Meta:** com orçamento mensal definido, mostra num gráfico o acumulado de despesas do mês (Realizado), a reta de projeção no ritmo atual (Projetado, que soma o ritmo dos gastos variáveis e os gastos fixos) e a linha do orçamento (Meta).
 - **Categorias personalizadas:** crie categorias com emoji e cor, separadas para despesas e receitas.
 - **Desfazer:** ao remover um registro, o aviso oferece a opção "Desfazer".
 - **Exportar e fazer backup:** exportação em CSV e backup completo em JSON.
@@ -83,6 +84,7 @@ Tudo fica no `localStorage` do navegador, neste aparelho. Nada é enviado para s
 | `meus-gastos:registros` | Lista de lançamentos |
 | `meus-gastos:orcamento` | Valor do orçamento mensal |
 | `meus-gastos:categorias-custom` | Categorias personalizadas |
+| `meus-gastos:fixos` | Gastos fixos mensais |
 
 Cada lançamento tem o formato:
 

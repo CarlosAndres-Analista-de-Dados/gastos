@@ -1059,10 +1059,12 @@ function renderizarGraficoMeta() {
   const linhaReal = pts.join(" ");
   const areaReal = `${f1(escX(1))},${f1(yBase)} ${linhaReal} ${f1(xHoje)},${f1(yBase)}`;
 
-  // --- Projetado: do ponto de hoje até o fim do mês ---
+  // --- Projetado: ritmo médio atual, desde o dia 1 até o fim do mês ---
+  const mediaDia = gastoMes / hoje;
+  const ritmo = (d) => mediaDia * d;
   const yHoje = escY(gastoMes);
   const xFim = escX(D), yFim = escY(projecaoFinal);
-  const linhaProj = `${f1(xHoje)},${f1(yHoje)} ${f1(xFim)},${f1(yFim)}`;
+  const linhaProj = `${f1(escX(1))},${f1(escY(ritmo(1)))} ${f1(xFim)},${f1(yFim)}`;
 
   // --- Meta ---
   const yMeta = escY(orcamento);
@@ -1097,6 +1099,7 @@ function renderizarGraficoMeta() {
     ${chipHoje}
     <g id="gm-guia" style="display:none" pointer-events="none">
       <line id="gm-guia-linha" y1="${M.top}" y2="${f1(yBase)}" stroke="#1F2A24" stroke-opacity="0.35"></line>
+      <circle id="gm-guia-ritmo" r="3.5" fill="#E8A33D" stroke="#fff" stroke-width="1.5"></circle>
       <circle id="gm-guia-ponto" r="5" fill="#fff" stroke-width="2.4"></circle>
     </g>
     <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"></rect>
@@ -1106,6 +1109,7 @@ function renderizarGraficoMeta() {
   const guia = graficoMetaSvgEl.querySelector("#gm-guia");
   const guiaLinha = graficoMetaSvgEl.querySelector("#gm-guia-linha");
   const guiaPonto = graficoMetaSvgEl.querySelector("#gm-guia-ponto");
+  const guiaRitmo = graficoMetaSvgEl.querySelector("#gm-guia-ritmo");
 
   const mostrar = (ev) => {
     const r = graficoMetaSvgEl.getBoundingClientRect();
@@ -1113,17 +1117,23 @@ function renderizarGraficoMeta() {
     let d = Math.round(1 + ((x - M.left) / plotW) * (D - 1));
     d = Math.min(D, Math.max(1, d));
     const real = d <= hoje;
-    const valor = real ? cum[d] : gastoMes + ((projecaoFinal - gastoMes) * (d - hoje)) / (D - hoje);
+    const valor = real ? cum[d] : ritmo(d);
     const pct = Math.round((valor / orcamento) * 100);
+    const dif = real ? cum[d] - ritmo(d) : 0;
+    const txtRitmo = Math.abs(dif) < 0.005 ? "no ritmo"
+      : dif > 0 ? `${formatarMoeda(dif)} acima do ritmo` : `${formatarMoeda(-dif)} abaixo do ritmo`;
     const cx = f1(escX(d));
     guiaLinha.setAttribute("x1", cx);
     guiaLinha.setAttribute("x2", cx);
     guiaPonto.setAttribute("cx", cx);
     guiaPonto.setAttribute("cy", f1(escY(valor)));
     guiaPonto.setAttribute("stroke", real ? "#C4573D" : "#E8A33D");
+    guiaRitmo.setAttribute("cx", cx);
+    guiaRitmo.setAttribute("cy", f1(escY(ritmo(d))));
+    guiaRitmo.style.display = real ? "" : "none";
     guia.style.display = "";
     leituraEl.innerHTML = real
-      ? `<strong class="font-semibold">Dia ${d}${d === hoje ? " (hoje)" : ""}:</strong> ${formatarMoeda(valor)} gastos, ${pct}% da meta`
+      ? `<strong class="font-semibold">Dia ${d}${d === hoje ? " (hoje)" : ""}:</strong> ${formatarMoeda(valor)} gastos, ${txtRitmo}`
       : `<strong class="font-semibold">Dia ${d}:</strong> projeção de ${formatarMoeda(valor)}, ${pct}% da meta`;
   };
   const esconder = () => {
